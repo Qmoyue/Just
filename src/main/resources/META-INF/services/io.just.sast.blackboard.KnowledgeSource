@@ -1,2 +1,3 @@
 io.just.sast.knowledge.ks1.PatternKnowledgeSource
 io.just.sast.knowledge.ks2.BackwardTaintAnalysis
+io.just.sast.knowledge.ks3.ContextRefineKnowledgeSource

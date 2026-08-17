@@ -64,6 +64,34 @@ public final class ClassHierarchy {
         return list != null ? list : List.of();
     }
 
+    /** 类的传递接口（含父类继承），供接口反向分发使用。 */
+    public List<String> transitiveInterfaces(String internalName) {
+        List<String> result = new ArrayList<>();
+        Deque<String> queue = new ArrayDeque<>();
+        Set<String> visited = new HashSet<>();
+        queue.add(internalName);
+        while (!queue.isEmpty()) {
+            String cur = queue.poll();
+            if (!visited.add(cur)) {
+                continue;
+            }
+            ClassInfo ci = classInfo(cur);
+            if (ci == null) {
+                continue;
+            }
+            for (String itf : ci.interfaces()) {
+                if (visited.add(itf)) {
+                    result.add(itf);
+                    queue.add(itf);
+                }
+            }
+            if (ci.superName() != null) {
+                queue.add(ci.superName());
+            }
+        }
+        return result;
+    }
+
     /** a 是否为 b 的子类型（沿父类 + 传递接口）。 */
     public boolean isSubtypeOf(String a, String b) {
         if (a.equals(b)) {

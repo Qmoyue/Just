@@ -372,9 +372,29 @@ RFC 4180 转义；UTF-8 with BOM（Excel 中文不乱码）；统计与日志走
 
 | 候选知识源 | 借鉴 | 作用 | 计划 |
 |---|---|---|---|
+| **KS3 上下文敏感补分析（已实现）** | Gadget Inspector 调用点敏感；CallGraph 精确 call-return 对 | 对 KS2 未命中的 sink（NO_PATH/UNRESOLVED/TOO_LONG）以调用点敏感 + 返回流进入式补分析，消除全调用者扇出噪声，提升命中（javamix 链） | v0.1 ✓ |
+| KS4 链可行性验证（PASM-lite） | Gadget Inspector 的 PASM（类型约束模拟） | 校验链上每跳的运行时类型约束，剔除"纸上链" | v0.2 |
+| KS5 分配点敏感（轻量指针分析） | tabby（Soot points-to） | 区分同字段不同实例，消除字段碰撞假链 | v0.2 |
+| KS6 反射/代理/lambda 按需解析 | CodeQL models-as-data | 反向遇反射/代理/indy 时向黑板提需求，解析后重新投递（EDGE_ADDED 反馈环） | v0.2 |
+
+**置信度评分规范（证据化，逐条可复核）：**
+
+```text
+score = Σ(逐跳证据) + entry 权重 + 严重度加成 - unresolved × 2
+逐跳：DIRECT_CALL +1；FIELD_FLOW +1（含字段名证据）；VIRTUAL_DISPATCH 0；LAMBDA 0
+entry：readObject/readResolve/readObjectNoData/readExternal/hashCode/proxyInvoke +2；
+       equals/compareTo/compare/toString/finalize +1；deserialization（OIS 源）+1
+严重度：HIGH +1
+分桶：score ≥ 5 → HIGH；≥ 3 → MEDIUM；否则 LOW
+```
+
+findings.csv 按 confidence_score 降序输出（高证据链置顶）；分类 = entry_kind + sink category。
+
+## 13. 知识源扩展路线（调研自同类引擎）
+
+| 候选知识源 | 借鉴 | 作用 | 计划 |
+|---|---|---|---|
 | KS3 链可行性验证（PASM-lite） | Gadget Inspector 的 PASM（Partial Assembly，类型约束模拟） | 校验链上每跳的运行时类型约束（字段声明类型、方法参数类型、if 条件），剔除"纸上链" | v0.2 |
-| KS4 分配点敏感（轻量指针分析） | tabby（Soot points-to）、Gadget Inspector 对象图 | 区分同字段不同实例（如两个 HashMap 的 table），消除字段碰撞假链 | v0.2 |
-| KS5 反射/代理/lambda 按需解析 | CodeQL models-as-data、Gadget Inspector 反射建模 | 反向遇 Method.invoke/InvocationHandler/indy 时向黑板提需求，解析后重新投递（EDGE_ADDED 反馈环） | v0.2 |
 
 KS3 接口草图：
 
