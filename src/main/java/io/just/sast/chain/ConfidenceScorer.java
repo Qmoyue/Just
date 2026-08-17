@@ -10,16 +10,31 @@ public final class ConfidenceScorer {
     private ConfidenceScorer() {}
 
     public static String score(Chain chain) {
-        boolean hasWeak = false;
+        return switch (rank(chain)) {
+            case 0 -> "HIGH";
+            case 1 -> "MEDIUM";
+            default -> "LOW";
+        };
+    }
+
+    /**
+     * 置信度等级（数字越小越高，供排序）：
+     * 0 = HIGH（全程直接调用、无未解析）
+     * 1 = MEDIUM（含 CHA 虚分发/lambda 等弱证据）
+     * 2 = LOW（含未解析跳）
+     * 字段流转（FIELD_FLOW）是反序列化链的正常证据，不降级。
+     */
+    public static int rank(Chain chain) {
+        boolean weak = false;
         for (ChainHop hop : chain.hops()) {
             HopKind kind = hop.kind();
-            if (kind == HopKind.VIRTUAL_DISPATCH || kind == HopKind.LAMBDA || kind == HopKind.FIELD_FLOW) {
-                hasWeak = true;
+            if (kind == HopKind.VIRTUAL_DISPATCH || kind == HopKind.LAMBDA) {
+                weak = true;
             }
         }
         if (chain.unresolvedHops() > 0) {
-            return hasWeak ? "LOW" : "MEDIUM";
+            return weak ? 2 : 1;
         }
-        return hasWeak ? "MEDIUM" : "HIGH";
+        return weak ? 1 : 0;
     }
 }

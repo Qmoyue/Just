@@ -1,4 +1,4 @@
-package io.just.sast.analysis.taint;
+package io.just.sast.knowledge.ks2;
 
 /** 值来源（正向抽象解释的产物，反向污点的输入）。 */
 public sealed interface ValueOrigin

@@ -24,4 +24,13 @@ public record ClassInfo(
         }
         return null;
     }
+
+    public FieldInfo field(String name) {
+        for (FieldInfo f : fields) {
+            if (f.name().equals(name)) {
+                return f;
+            }
+        }
+        return null;
+    }
 }

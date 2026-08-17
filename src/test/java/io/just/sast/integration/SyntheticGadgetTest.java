@@ -26,7 +26,7 @@ class SyntheticGadgetTest {
     void fieldGadgetFoundButNegativesNot(@TempDir Path dir) throws Exception {
         Path jar = FixtureJars.buildGadgets(dir);
         ScanPipeline.ScanResult result =
-                ScanPipeline.run(jar, null, dir.resolve("out"), null, 20, false, false);
+                ScanPipeline.run(jar, null, dir.resolve("out"), null, false, false);
         List<Chain> chains = result.chains();
 
         assertTrue(chains.stream().anyMatch(c ->

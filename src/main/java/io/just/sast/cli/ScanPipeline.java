@@ -2,8 +2,6 @@ package io.just.sast.cli;
 
 import io.just.sast.analysis.callgraph.CallGraphBuilder;
 import io.just.sast.analysis.hierarchy.ClassHierarchy;
-import io.just.sast.analysis.pattern.PatternKnowledgeSource;
-import io.just.sast.analysis.taint.BackwardTaintAnalysis;
 import io.just.sast.blackboard.Blackboard;
 import io.just.sast.blackboard.Chain;
 import io.just.sast.blackboard.Controller;
@@ -27,8 +25,11 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 扫描管线编排：frontend → 层次 → CPG → 调用图 → 黑板（KS1+KS2）→ CSV。 */
+/** 扫描管线编排：frontend → 层次 → CPG → 调用图 → 黑板（KS1+KS2 交叉并行）→ CSV。 */
 public final class ScanPipeline {
+
+    /** 反向回溯深度上限（内部固定，不暴露参数）。 */
+    private static final int MAX_DEPTH = 20;
 
     private ScanPipeline() {}
 
@@ -42,15 +43,7 @@ public final class ScanPipeline {
     public record ScanResult(int exitCode, List<Chain> chains, ScanStatistics stats) {}
 
     public static ScanResult run(Path target, List<Path> deps, Path output, Path rules,
-                                 int maxDepth, boolean stats, boolean verbose) throws Exception {
-        return run(target, deps, output, rules, maxDepth, stats, verbose, false);
-    }
-
-    public static ScanResult run(Path target, List<Path> deps, Path output, Path rules,
-                                 int maxDepth, boolean stats, boolean verbose, boolean withJdk) throws Exception {
-        if (verbose) {
-            System.setProperty("just.log.level", "DEBUG");
-        }
+                                 boolean stats, boolean fast) throws Exception {
         long start = System.currentTimeMillis();
 
         // 规则
@@ -68,11 +61,11 @@ public final class ScanPipeline {
             targets.addAll(deps);
         }
 
-        // 构建期
+        // 构建期（深度分析默认：JDK 运行库全量纳入）
         BytecodeFrontend frontend = new BytecodeFrontend();
-        LoadResult load = withJdk
-                ? frontend.load(targets, new JrtClassSource().listAll(JrtClassSource.DESER_MODULES))
-                : frontend.load(targets);
+        LoadResult load = fast
+                ? frontend.load(targets)
+                : frontend.load(targets, new JrtClassSource().listAll(JrtClassSource.DESER_MODULES));
         JustLogger.info("解析完成：{} 个类（{} 个文件），诊断 {} 条",
                 load.classCount(), load.filesScanned(), load.diagnosticCount());
 
@@ -83,10 +76,9 @@ public final class ScanPipeline {
                 cpg.graph().nodeCount(), cpg.graph().edgeCount(), callEdges,
                 cpg.fieldWriters().fieldCount());
 
-        // 分析期（黑板循环）
-        Blackboard blackboard = new Blackboard(cpg.graph(), hierarchy, cpg.fieldWriters(), ruleSet, maxDepth);
-        List<KnowledgeSource> sources = List.of(new PatternKnowledgeSource(), new BackwardTaintAnalysis());
-        new Controller(blackboard, sources).run();
+        // 分析期（黑板循环：KS1 标记与 KS2 反向污点交叉并行，各自独立写黑板）
+        Blackboard blackboard = new Blackboard(cpg.graph(), hierarchy, cpg.fieldWriters(), ruleSet, MAX_DEPTH);
+        new Controller(blackboard, KnowledgeSources.discover()).run();
 
         // 报告期
         CsvReporter reporter = new CsvReporter();

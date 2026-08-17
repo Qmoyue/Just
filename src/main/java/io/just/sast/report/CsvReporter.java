@@ -31,8 +31,11 @@ public final class CsvReporter {
         for (Chain chain : chains) {
             groups.computeIfAbsent(pairKey(chain), k -> new ArrayList<>()).add(chain);
         }
+        // 高可用链置顶：置信度 → 质量（无未解析） → 链长 → 变体数
+        List<List<Chain>> sortedGroups = new ArrayList<>(groups.values());
+        sortedGroups.sort((g1, g2) -> compareGroups(g1, g2));
         int seq = 0;
-        for (List<Chain> group : groups.values()) {
+        for (List<Chain> group : sortedGroups) {
             Chain representative = group.stream()
                     .min(java.util.Comparator.comparingInt(c -> c.hops().size()))
                     .orElseThrow();
@@ -55,6 +58,29 @@ public final class CsvReporter {
     private static String pairKey(Chain chain) {
         return chain.entryClass() + "#" + chain.entryMethod() + "|"
                 + chain.sinkClass() + "#" + chain.sinkMethod() + "|" + chain.category();
+    }
+
+    /** 组排序：置信度（HIGH 置顶）→ 质量（无未解析优先） → 链长（短优先） → 变体数（多优先）。 */
+    private static int compareGroups(List<Chain> g1, List<Chain> g2) {
+        Chain c1 = g1.stream().min(java.util.Comparator.comparingInt(c -> c.hops().size())).orElseThrow();
+        Chain c2 = g2.stream().min(java.util.Comparator.comparingInt(c -> c.hops().size())).orElseThrow();
+        int cmp = Integer.compare(ConfidenceScorer.rank(c1), ConfidenceScorer.rank(c2));
+        if (cmp != 0) {
+            return cmp;
+        }
+        cmp = Integer.compare(c1.unresolvedHops(), c2.unresolvedHops());
+        if (cmp != 0) {
+            return cmp;
+        }
+        cmp = Integer.compare(c1.hops().size(), c2.hops().size());
+        if (cmp != 0) {
+            return cmp;
+        }
+        cmp = Integer.compare(g2.size(), g1.size());
+        if (cmp != 0) {
+            return cmp;
+        }
+        return pairKey(c1).compareTo(pairKey(c2));
     }
 
     private static final String FINDINGS_HEADER = "chain_id,rule_id,category,severity,confidence,quality,"

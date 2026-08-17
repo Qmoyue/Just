@@ -149,15 +149,23 @@ CPG_BUILD  CONTAINS/ARG/CFG/FIELD_REF 边 + 四个反向索引
 CALLGRAPH  CHA + 反射/代理/lambda 特殊边
 ```
 
-### 5.2 分析期（黑板循环）
+### 5.2 分析期（黑板循环：KS1/KS2 交叉并行）
 
 ```text
-① KS1 标记 SINK / MAGIC_ENTRY 节点 → SINK_MARKED 事件
-② 控制器弹出事件 → 调度 KS2 对该 SINK 的每个 taintedPosition 反向分析
-③ KS2 反向 worklist 传播 → 写 TAINT 边 → TAINT_EXTENDED 事件
-④ 控制器判定：TAINT 触及 MAGIC_ENTRY 的 this 字段/参数 → 链达成 → 链提取器消费
-⑤ 遇不可解析调用 → UNKNOWN_EDGE 质量标记；后续调用图补边 → 受影响 SINK 重新入队
-⑥ Worklist 清空 → 黑板不动点 → 分析期结束
+SCAN_START 事件广播：KS1 与 KS2 同时触发，互不等待对方的输出。
+
+KS1（模式匹配，高召回预筛）：
+  独立枚举：按 YAML 规则遍历 CALL/METHOD 节点 → 标记 SINK / MAGIC_ENTRY → 写黑板
+KS2（反向污点，精度闸门）：
+  独立枚举：同样从黑板读规则，自行圈定 sink 候选（不读 KS1 的标记）
+  → 对每个候选反向回答"该值是否攻击者可控"（controlled 语义：
+    OIS 读无条件可控 / magic entry 对象图可控 / 可控对象字段可控 /
+    可控值写入字段可控 / 数组元素 / 可控 receiver 返回值）
+  → 写 TAINT 路径边 + 候选链 + 每 sink 裁决（SinkOutcome）
+
+校准关系（非流水线依赖）：黑板合并视图 sinkRecords() = KS1 标记 + KS2 裁决；
+KS2 的裁决附着于 KS1 的标记之上，过滤率即纠错效果的量化（sinks.csv + 控制台逐规则统计）。
+新增知识源实现 KnowledgeSource 接口 + ServiceLoader 注册即可加入循环，零侵入。
 ```
 
 ### 5.3 报告期
@@ -359,3 +367,27 @@ RFC 4180 转义；UTF-8 with BOM（Excel 中文不乱码）；统计与日志走
 | 最小依赖 + CSV 输出 | 轻量启动；CSV 便于下游处理与复核 |
 | 黑板架构 + sink 驱动反向搜索 | sink 远少于 magic entry，反向天然剪枝；引擎插件化解耦 |
 | KS1 高召回 / KS2 高精度 | 漏报不可补救，误报可被严格判定与置信度消化 |
+
+## 13. 知识源扩展路线（调研自同类引擎）
+
+| 候选知识源 | 借鉴 | 作用 | 计划 |
+|---|---|---|---|
+| KS3 链可行性验证（PASM-lite） | Gadget Inspector 的 PASM（Partial Assembly，类型约束模拟） | 校验链上每跳的运行时类型约束（字段声明类型、方法参数类型、if 条件），剔除"纸上链" | v0.2 |
+| KS4 分配点敏感（轻量指针分析） | tabby（Soot points-to）、Gadget Inspector 对象图 | 区分同字段不同实例（如两个 HashMap 的 table），消除字段碰撞假链 | v0.2 |
+| KS5 反射/代理/lambda 按需解析 | CodeQL models-as-data、Gadget Inspector 反射建模 | 反向遇 Method.invoke/InvocationHandler/indy 时向黑板提需求，解析后重新投递（EDGE_ADDED 反馈环） | v0.2 |
+
+KS3 接口草图：
+
+```java
+/** 链可行性验证：消费 CHAIN_FOUND，按类型约束过滤并写 CALIBRATED 事件。 */
+public interface KnowledgeSource {
+    String id();
+    Set<EventType> interests();
+    void init(Blackboard bb);
+    void onEvent(Blackboard bb, Event event);
+}
+```
+
+插件约定（新增知识源三步）：实现接口 → 写入
+`META-INF/services/io.just.sast.blackboard.KnowledgeSource` → 回归测试。
+内置 KS 位于 `io.just.sast.knowledge.ks1`（模式匹配）与 `io.just.sast.knowledge.ks2`（反向污点）。

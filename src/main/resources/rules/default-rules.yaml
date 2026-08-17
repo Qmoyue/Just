@@ -104,6 +104,38 @@ rules:
       call: { owner: "com/sun/org/apache/bcel/internal/util/ClassLoader", name: ~"loadClass|createClass" }
     tainted: [{arg: 0}]
 
+  - id: JUST-SINK-HUTOOL-DESERIALIZE
+    kind: sink
+    category: DESERIALIZE
+    severity: HIGH
+    match:
+      call: { owner: "cn/hutool/core/util/ObjectUtil", name: "deserialize" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-HUTOOL-SERIALIZEUTIL
+    kind: sink
+    category: DESERIALIZE
+    severity: HIGH
+    match:
+      call: { owner: "cn/hutool/core/util/SerializeUtil", name: "deserialize" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-COMMONS-SERIALIZATIONUTILS
+    kind: sink
+    category: DESERIALIZE
+    severity: HIGH
+    match:
+      call: { owner: "org/apache/commons/lang3/SerializationUtils", name: ~"deserialize|roundtrip" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-SPRING-SERIALIZATIONUTILS
+    kind: sink
+    category: DESERIALIZE
+    severity: HIGH
+    match:
+      call: { owner: "org/springframework/util/SerializationUtils", name: "deserialize" }
+    tainted: [{arg: 0}]
+
   # ---- magic-entry 终点 ----
   - id: JUST-ENTRY-READOBJECT
     kind: magic-entry

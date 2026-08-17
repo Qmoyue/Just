@@ -1,4 +1,4 @@
-package io.just.sast.analysis.taint;
+package io.just.sast.knowledge.ks2;
 
 import io.just.sast.cpg.build.Cfg;
 import io.just.sast.cpg.build.CfgEdge;
@@ -19,7 +19,7 @@ import java.util.Set;
 
 /**
  * 方法内正向抽象解释：计算每条指令执行前的栈/局部变量值来源。
- * 惰性计算 + 缓存；栈槽合并 = 来源集合并（收敛）。
+ * 惰性计算 + 缓存；栈槽合并 = 来源集合并（收敛）；数组写入记录元素来源。
  */
 public final class ForwardOrigins {
 
@@ -83,7 +83,6 @@ public final class ForwardOrigins {
         for (int i = 0; i < maxLocals; i++) {
             initLocals.add(new LinkedHashSet<>());
         }
-        // 参数槽位初始化
         List<Integer> argSlots = Descriptor.argSlots(method.descriptor(), method.isStatic());
         int slot = 0;
         for (int argIdx = 0; argIdx < argSlots.size(); argIdx++) {
@@ -128,7 +127,8 @@ public final class ForwardOrigins {
                 .stream().mapToInt(Integer::intValue).sum());
     }
 
-    private State transfer(MethodInfo method, InsnFact insn, State in, Map<ValueOrigin, Set<ValueOrigin>> arrayElements) {
+    private State transfer(MethodInfo method, InsnFact insn, State in,
+                           Map<ValueOrigin, Set<ValueOrigin>> arrayElements) {
         List<Set<ValueOrigin>> stack = new ArrayList<>(in.stack());
         List<Set<ValueOrigin>> locals = new ArrayList<>(in.locals());
         Op op = insn.op();
@@ -182,7 +182,7 @@ public final class ForwardOrigins {
             }
             case IASTORE, LASTORE, FASTORE, DASTORE, AASTORE, BASTORE, CASTORE, SASTORE -> {
                 Set<ValueOrigin> value = pop(stack);
-                pop(stack); // index
+                pop(stack);
                 Set<ValueOrigin> array = pop(stack);
                 for (ValueOrigin arr : array) {
                     arrayElements.computeIfAbsent(arr, k -> new LinkedHashSet<>()).addAll(value);
@@ -201,10 +201,7 @@ public final class ForwardOrigins {
                 pop(stack);
                 pop(stack);
             }
-            case DUP -> {
-                Set<ValueOrigin> v = top(stack);
-                push(stack, v);
-            }
+            case DUP -> push(stack, top(stack));
             case DUP_X1 -> {
                 Set<ValueOrigin> v1 = pop(stack);
                 Set<ValueOrigin> v2 = pop(stack);
@@ -277,7 +274,7 @@ public final class ForwardOrigins {
                 pop(stack);
             }
             default -> {
-                // 未知/未覆盖指令：不做栈变化，保持保守（来源可能缺失，但不会错）
+                // 未知/未覆盖指令：不做栈变化（来源保守缺失，不制造错误来源）
             }
         }
         return new State(stack, locals);

@@ -1,24 +1,25 @@
 # Just
 
 轻量字节码 SAST：挖掘 Java 原生反序列化（ObjectInputStream）gadget 利用链。
+简单易用：一条命令深度扫描（默认含 JDK 运行库全量分析），CSV 输出。
 
 ## 架构
 
 ```text
-JAR → ASM 前端（fat jar 嵌套解析 + JDK 运行库）→ 字节码事实模型 → CPG（内存图 + CFG + 调用图）
-  → 黑板（Blackboard = CPG + 分析产物；知识源经事件协作，插件式扩展）
-      KS1 模式匹配引擎：YAML 规则圈定 sink 起点（命令执行/动态类加载/JNDI/反射调用）
-                       与 magic entry 终点（readObject/hashCode/equals/toString/.../InvocationHandler.invoke）
-      KS2 反向污点引擎：从 sink 参数反向回溯（参数位置对齐、字段敏感、数组元素、
-                       调用点敏感、反射/代理/lambda），触及 entry 即产出候选链
-  → 链提取 + 置信度 → CSV（findings/edges/sinks）
+JAR → ASM 前端（fat jar 嵌套解析 + JDK 运行库）
+  → 字节码事实模型 → CPG（内存图 + 惰性 CFG/def-use + CHA 调用图）
+  → 黑板（知识源交叉并行、插件式扩展，ServiceLoader 注册）
+      KS1 模式匹配：YAML 规则圈定 sink 起点与 magic entry 终点
+      KS2 反向污点：从 sink 反向回答"该值是否攻击者可控"
+         （OIS 源 / 对象图传递 / 字段敏感 / 数组元素 / 可控 receiver）
+  → 链提取 + 置信度排序（高可用链置顶）→ CSV（findings/edges/sinks）
 ```
 
 ## 使用
 
 ```bash
-mvn package          # 产出 target/just-sast.jar
-java -jar target/just-sast.jar scan --jar target.jar --stats
+mvn package
+java -jar target/just-sast.jar scan --jar target.jar
 ```
 
 | 参数 | 说明 |
@@ -27,16 +28,16 @@ java -jar target/just-sast.jar scan --jar target.jar --stats
 | `--deps <a,b,...>` | 附加依赖（逗号分隔） |
 | `--output <dir>` | CSV 输出目录（默认 `just-out`） |
 | `--rules <file>` | 自定义规则 YAML（默认内置） |
-| `--max-depth <n>` | 反向回溯深度上限（默认 20） |
+| `--fast` | 快速模式：不加载 JDK 运行库全量（链可能不完整） |
 | `--stats` | 扫描统计与逐规则过滤率 |
 
 输出：
-- `findings.csv`：候选 gadget 链（entry → sink 路径、置信度、变体计数）
+- `findings.csv`：候选 gadget 链（按置信度降序，含路径与变体计数）
 - `edges.csv`：链每跳明细（调用/字段流转证据）
-- `sinks.csv`：每个 sink 的分析裁决（KS2 对 KS1 标记的过滤记录）
+- `sinks.csv`：每个 sink 的 KS2 裁决（对 KS1 标记的校准记录）
 
-本地测试（benchmark 与开发记录不入仓库）：
+## 开发
 
-```bash
-mvn test
-```
+规范见 `AGENTS.md`；架构 `docs/architecture.md`；需求 `docs/requirements.md`。
+新增知识源：实现 `io.just.sast.blackboard.KnowledgeSource` → 写入
+`META-INF/services/io.just.sast.blackboard.KnowledgeSource` → 回归测试。

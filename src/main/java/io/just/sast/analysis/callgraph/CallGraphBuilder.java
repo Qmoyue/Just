@@ -20,7 +20,8 @@ import java.util.Set;
  */
 public final class CallGraphBuilder {
 
-    private static final int DISPATCH_CAP = 100;
+    /** 虚调用/接口实现枚举上限（超出只取声明目标，由全局步数预算兜底）。 */
+    private static final int DISPATCH_CAP = 500;
     private static final String LAMBDA_METAFACTORY = "java/lang/invoke/LambdaMetafactory";
 
     private final ClassHierarchy hierarchy;

@@ -17,8 +17,13 @@ import java.util.Set;
 /**
  * 黑板 = CPG 图 + 标记 + 链产物 + 事件队列。
  * 知识源通过本对象读写共享状态，互不直接调用。
+ * KS1（标记）与 KS2（裁决）交叉并行、独立写黑板：KS2 不依赖 KS1 的输出触发，
+ * 二者产物在 sinkRecords() 中合并——KS2 的裁决校准 KS1 的标记。
  */
 public final class Blackboard {
+
+    /** KS1 标记 + KS2 裁决合并后的 sink 视图（校准结果）。 */
+    public record SinkRecord(SinkMark mark, SinkOutcome outcome) {}
 
     private final Graph graph;
     private final ClassHierarchy hierarchy;
@@ -78,6 +83,15 @@ public final class Blackboard {
 
     public SinkMark sinkOf(long callNodeId) {
         return sinkMarks.get(callNodeId);
+    }
+
+    /** KS1 标记与 KS2 裁决的合并视图（校准后的 sink 记录）。 */
+    public Map<Long, SinkRecord> sinkRecords() {
+        Map<Long, SinkRecord> merged = new HashMap<>();
+        for (Map.Entry<Long, SinkMark> entry : sinkMarks.entrySet()) {
+            merged.put(entry.getKey(), new SinkRecord(entry.getValue(), sinkOutcomes.get(entry.getKey())));
+        }
+        return merged;
     }
 
     // ---- sink 裁决（KS2 写，反馈给 KS1 的结果） ----

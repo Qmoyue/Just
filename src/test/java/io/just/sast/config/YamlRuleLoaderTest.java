@@ -16,7 +16,7 @@ class YamlRuleLoaderTest {
         try (InputStream in = getClass().getResourceAsStream("/rules/default-rules.yaml")) {
             rules = new YamlRuleLoader().load(in);
         }
-        assertEquals(13, rules.sinks().size());
+        assertEquals(17, rules.sinks().size());
         assertEquals(11, rules.magicEntries().size());
 
         Rule.SinkRule invoke = rules.sinks().stream()

@@ -24,16 +24,18 @@ JAR → ASM 前端（fat jar 嵌套解析 + JDK 运行库）
 
 ```bash
 mvn package                 # 构建 target/just-sast.jar
-mvn test                    # 全部测试（含 benchmark 三 jar 真实回归）
-java -jar target/just-sast.jar scan --jar x.jar --stats
+mvn test                    # 全部测试（含 benchmark 五 jar 真实回归）
+java -jar target/just-sast.jar scan --jar x.jar
 ```
+
+CLI 极简：仅 `--jar`（必填）+ `--deps/--output/--rules/--fast/--stats`。深度分析默认开启（含 JDK 运行库）。
 
 环境：JDK 17（release 17）、Maven 单模块。运行时依赖仅 ASM + picocli + SnakeYAML。
 
 ## 开发规范
 
 1. **低耦合高内聚**：`org.objectweb.asm.*` 只允许出现在 `frontend` 包；知识源之间零直接调用（只经黑板通信）；分层单向依赖。
-2. **知识源可扩展**：新引擎实现 `KnowledgeSource` 接口注册即可，不得修改既有引擎。
+2. **知识源可扩展**：新引擎实现 `KnowledgeSource` 接口 + ServiceLoader 注册即可，不得修改既有引擎。内置 KS 在 `io.just.sast.knowledge.ks1/ks2` 包。KS1/KS2 交叉并行、独立写黑板，KS2 的裁决校准 KS1 的标记（非流水线依赖）。
 3. **测试纪律**（test-doctor）：每条测试保护一个用户可见契约（检出链/负例不报/CSV 格式/损坏类隔离），不测实现细节。
 4. **禁止 benchmark 过拟合**：生产代码不得出现任何针对 benchmark 类名/路径的特判；优化必须是通用语义修复；不得伪造准确率。
 5. **代码风格**（ai-slop-taste）：直接、类型封闭（record/sealed）、少状态少抽象；不写死结构、不写未使用的代码。
@@ -41,6 +43,6 @@ java -jar target/just-sast.jar scan --jar x.jar --stats
 
 ## 仓库约定
 
-- `benchmark/`（demo.jar、demo2.jar、Unictf.jar）与 `docs/development.md`（开发记录）**仅存本地，不得提交**。
+- `benchmark/`（五个回归 jar + javamix wp）与 `docs/development.md`（开发记录）**仅存本地，不得提交**。
 - 规则文件：`src/main/resources/rules/default-rules.yaml`（sink/magic-entry 声明式规则，支持 `~` 锚定正则）。
 - 规则默认 owner+name+descriptor 结构匹配；每条链携带 rule_id，假链需可归因到规则。

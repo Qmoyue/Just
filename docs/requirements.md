@@ -17,12 +17,12 @@ Just 是轻量 Java SAST 工具：对闭源 JAR 做 Java 原生反序列化（Ob
 | FR4 | 类层次 | 含 JDK 类懒加载（jrtfs）；Serializable/Externalizable 传递闭包判定 |
 | FR5 | 调用图 | CHA 虚调用解析；反射/动态代理/lambda 特殊边；不可解析标记 UNKNOWN 质量 |
 | FR6 | KS1 模式匹配 | YAML 规则：sink 起点（命令执行/动态类加载/JNDI/反射调用/脚本执行，13 条）+ magic-entry 终点（readObject/readResolve/readObjectNoData/hashCode/equals/compareTo/compare/toString/finalize/readExternal/InvocationHandler.invoke，11 条），清单对齐 ysoserial/GadgetInspector/CodeQL/tabby 公开规则；owner+name+descriptor 结构匹配，正则可选且锚定 |
-| FR7 | 黑板与控制器 | 知识源插件接口（KnowledgeSource）；事件驱动调度；KS 交错执行；反馈重调度（KS2 遇阻→需求事件→解析补边→受影响 sink 重新入队）；不动点终止 |
+| FR7 | 黑板与控制器 | 知识源插件接口（KnowledgeSource + ServiceLoader）；**KS1 与 KS2 交叉并行**：均从 SCAN_START 出发、独立枚举写黑板，KS2 的 sink 裁决校准 KS1 标记（黑板合并视图）；新增知识源零侵入 |
 | FR8 | KS2 反向污点 | 从 sink 参数/receiver 反向回溯：反 def-use、字段写入者回溯、跨方法形参↔实参对齐（强制）、CHA 分发、反射/代理/lambda 反向边；深度上限与去环；路径记录 |
 | FR9 | 链达成 | TAINT 回溯触及 magic-entry 的 this 字段 / OIS.read* 调用结果 / proxy-invoke 参数 → 链成立 |
 | FR10 | 链提取 | 内部反向 TAINT 路径翻转为 entry→sink 人读顺序；去重（entry+sink+有序方法集合）；置信度按路径证据分级 |
 | FR11 | CSV 报告 | findings.csv（链汇总，含 variant_count 变体计数）+ edges.csv（每跳明细）+ sinks.csv（每个 sink 的 KS2 裁决）；RFC 4180；UTF-8 BOM；统计与日志走 stderr |
-| FR12 | CLI | `scan` 子命令：`--jar`（必填）、`--deps`、`--output`（默认 just-out）、`--rules`、`--max-depth`（默认 20）、`--stats`；退出码 0 成功/2 用法错误/3 内部错误 |
+| FR12 | CLI | `scan` 子命令：`--jar`（必填）、`--deps`、`--output`（默认 just-out）、`--rules`、`--fast`、`--stats`；深度分析默认（含 JDK 运行库）；退出码 0 成功/2 用法错误/3 内部错误 |
 
 ## 3. 非功能需求
 

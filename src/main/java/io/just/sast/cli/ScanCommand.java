@@ -8,8 +8,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.concurrent.Callable;
 
-/** scan 子命令：扫描 JAR/目录，输出 gadget 链 CSV。 */
-@Command(name = "scan", description = "扫描 JAR/class 目录，挖掘反序列化 gadget 链并导出 CSV")
+/** scan 子命令：深度扫描 JAR/目录（默认含 JDK 运行库全量分析），导出 gadget 链 CSV。 */
+@Command(name = "scan", description = "深度扫描 JAR/class 目录，挖掘反序列化 gadget 链并导出 CSV")
 public final class ScanCommand implements Callable<Integer> {
 
     @Option(names = "--jar", required = true, paramLabel = "<jar|dir>",
@@ -25,34 +25,24 @@ public final class ScanCommand implements Callable<Integer> {
     Path output;
 
     @Option(names = "--rules", paramLabel = "<file>",
-            description = "自定义规则 YAML（默认内置规则）")
+            description = "自定义规则 YAML（默认内置）")
     Path rules;
 
-    @Option(names = "--max-depth", paramLabel = "<n>", defaultValue = "20",
-            description = "反向回溯深度上限（默认 20）")
-    int maxDepth;
-
-    @Option(names = "--jdk", description = "将 JDK 运行库（java.base/naming/rmi/management/scripting/sql）全量纳入分析，挖掘穿过 JDK 类的完整链")
-    boolean jdk;
+    @Option(names = "--fast", description = "快速模式：不加载 JDK 运行库全量（链可能不完整）")
+    boolean fast;
 
     @Option(names = "--stats", description = "输出扫描统计")
     boolean stats;
 
-    @Option(names = {"-v", "--verbose"}, description = "调试日志")
-    boolean verbose;
-
     @Override
     public Integer call() {
         try {
-            return ScanPipeline.run(target, deps, output, rules, maxDepth, stats, verbose, jdk).exitCode();
+            return ScanPipeline.run(target, deps, output, rules, stats, fast).exitCode();
         } catch (ScanPipeline.UsageException e) {
             System.err.println("[just:error] " + e.getMessage());
             return ExitCode.USAGE.code();
         } catch (Exception e) {
             System.err.println("[just:error] 扫描失败: " + e.getMessage());
-            if (verbose) {
-                e.printStackTrace();
-            }
             return ExitCode.INTERNAL.code();
         }
     }
