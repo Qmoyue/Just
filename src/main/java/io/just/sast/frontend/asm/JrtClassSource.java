@@ -11,12 +11,18 @@ import java.nio.file.FileSystem;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
-/** 通过 jrtfs 按需读取 JDK 运行库类。 */
+/** 通过 jrtfs 读取 JDK 运行库类：按需懒加载 + 全量模块枚举。 */
 public final class JrtClassSource implements JdkClassSource {
+
+    /** 与反序列化链相关的 JDK 模块（--jdk 全量加载集）。 */
+    public static final List<String> DESER_MODULES = List.of(
+            "java.base", "java.naming", "java.rmi", "java.management", "java.scripting", "java.sql");
 
     private final ClassFileReader reader = new ClassFileReader();
     private final Map<String, String> moduleIndex = new HashMap<>();
@@ -74,6 +80,30 @@ public final class JrtClassSource implements JdkClassSource {
                 }
             }
         }
+    }
+
+    /** 枚举指定模块的全部类字节（--jdk 全量分析用）。 */
+    public List<ClassBytes> listAll(List<String> modules) throws IOException {
+        List<ClassBytes> result = new ArrayList<>();
+        Path modulesRoot = jrt().getPath("modules");
+        for (String module : modules) {
+            Path modulePath = modulesRoot.resolve(module);
+            if (!Files.isDirectory(modulePath)) {
+                continue;
+            }
+            try (Stream<Path> walk = Files.walk(modulePath)) {
+                walk.filter(p -> p.toString().endsWith(".class")).forEach(p -> {
+                    String rel = modulePath.relativize(p).toString().replace('\\', '/');
+                    String className = rel.substring(0, rel.length() - 6);
+                    try {
+                        result.add(new ClassBytes(className, Files.readAllBytes(p), "jdk:/" + module));
+                    } catch (IOException e) {
+                        JustLogger.debug("JDK 类读取失败 {}: {}", className, e.getMessage());
+                    }
+                });
+            }
+        }
+        return result;
     }
 
     private FileSystem jrt() throws IOException {

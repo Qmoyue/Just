@@ -11,12 +11,12 @@ Just 是轻量 Java SAST 工具：对闭源 JAR 做 Java 原生反序列化（Ob
 
 | 编号 | 需求 | 说明 |
 |---|---|---|
-| FR1 | 输入解析 | 目标 JAR/class 目录 + 可选依赖 JAR；**支持 Spring Boot fat jar**（BOOT-INF/classes + BOOT-INF/lib 嵌套 jar 递归解析）；单类损坏/解析失败不中断全扫，计入诊断 |
+| FR1 | 输入解析 | 目标 JAR/class 目录 + 可选依赖 JAR；**支持 Spring Boot fat jar**（BOOT-INF/classes + BOOT-INF/lib 嵌套 jar 递归解析）；**--jdk 将 JDK 运行库（java.base/naming/rmi/management/scripting/sql）全量纳入分析**；单类损坏/解析失败不中断全扫，计入诊断 |
 | FR2 | 字节码事实模型 | ASM 解析为自研 model（ClassInfo/MethodInfo/FieldInfo/InsnFact 等），model 不依赖 ASM |
 | FR3 | CPG 构建 | 节点（CLASS/METHOD/FIELD/INS/CALL/CONST）与边（CONTAINS/ARG/CFG/EXTENDS/IMPLEMENTS/INVOKES/DISPATCHES/REFLECTIVE/PROXY/LAMBDA/FIELD_REF/TAINT）；指令级 CFG（含异常边）；反向遍历能力 |
 | FR4 | 类层次 | 含 JDK 类懒加载（jrtfs）；Serializable/Externalizable 传递闭包判定 |
 | FR5 | 调用图 | CHA 虚调用解析；反射/动态代理/lambda 特殊边；不可解析标记 UNKNOWN 质量 |
-| FR6 | KS1 模式匹配 | YAML 规则：sink 起点（命令执行/动态类加载/JNDI/**反射调用 Method.invoke** 四类首发）+ magic-entry 终点（readObject/readResolve/readObjectNoData/hashCode/equals/compareTo/toString/finalize/InvocationHandler.invoke）；owner+name+descriptor 结构匹配，正则可选且锚定 |
+| FR6 | KS1 模式匹配 | YAML 规则：sink 起点（命令执行/动态类加载/JNDI/反射调用/脚本执行，13 条）+ magic-entry 终点（readObject/readResolve/readObjectNoData/hashCode/equals/compareTo/compare/toString/finalize/readExternal/InvocationHandler.invoke，11 条），清单对齐 ysoserial/GadgetInspector/CodeQL/tabby 公开规则；owner+name+descriptor 结构匹配，正则可选且锚定 |
 | FR7 | 黑板与控制器 | 知识源插件接口（KnowledgeSource）；事件驱动调度；KS 交错执行；反馈重调度（KS2 遇阻→需求事件→解析补边→受影响 sink 重新入队）；不动点终止 |
 | FR8 | KS2 反向污点 | 从 sink 参数/receiver 反向回溯：反 def-use、字段写入者回溯、跨方法形参↔实参对齐（强制）、CHA 分发、反射/代理/lambda 反向边；深度上限与去环；路径记录 |
 | FR9 | 链达成 | TAINT 回溯触及 magic-entry 的 this 字段 / OIS.read* 调用结果 / proxy-invoke 参数 → 链成立 |

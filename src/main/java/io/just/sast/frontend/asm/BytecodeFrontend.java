@@ -18,11 +18,25 @@ public final class BytecodeFrontend {
 
     private final JarReader jarReader = new JarReader();
     private final ClassFileReader classFileReader = new ClassFileReader();
+    private final JrtClassSource jrt = new JrtClassSource();
 
     public LoadResult load(List<Path> targets) {
+        return load(targets, List.of());
+    }
+
+    /** load 的扩展：extraClassBytes 参与解析（如 --jdk 全量 JDK 类）。 */
+    public LoadResult load(List<Path> targets, List<ClassBytes> extraClassBytes) {
         List<ParseDiagnostic> diagnostics = new ArrayList<>();
         Map<String, ClassInfo> classes = new LinkedHashMap<>();
         int files = 0;
+        for (ClassBytes cb : extraClassBytes) {
+            files++;
+            try {
+                classes.putIfAbsent(cb.className(), classFileReader.read(cb.bytes()));
+            } catch (Exception e) {
+                diagnostics.add(new ParseDiagnostic(cb.origin(), e.getClass().getSimpleName() + ": " + e.getMessage()));
+            }
+        }
         for (Path target : targets) {
             try {
                 for (ClassBytes cb : jarReader.read(target)) {

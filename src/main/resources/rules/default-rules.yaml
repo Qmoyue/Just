@@ -56,6 +56,54 @@ rules:
       call: { owner: "java/lang/reflect/Method", name: "invoke" }
     tainted: [{arg: 0}, {arg: 1}]
 
+  - id: JUST-SINK-REFLECTIVE-NEWINSTANCE
+    kind: sink
+    category: REFLECTIVE_INVOKE
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/reflect/Constructor", name: "newInstance" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-CLASSLOADER-DEFINECLASS
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/ClassLoader", name: "defineClass" }
+    tainted: [{arg: 1}]
+
+  - id: JUST-SINK-SCRIPT-ENGINE
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "javax/script/ScriptEngine", name: "eval" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-SCRIPT-ENGINEMANAGER
+    kind: sink
+    category: CODE_EXEC
+    severity: MEDIUM
+    match:
+      call: { owner: "javax/script/ScriptEngineManager", name: "getEngineByName" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-TEMPLATESIMPL-OLD-PACKAGE
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "org/apache/xalan/xsltc/trax/TemplatesImpl", name: ~"getOutputProperties|newTransformer" }
+    tainted: [{receiver: true}]
+
+  - id: JUST-SINK-BCEL-CLASSLOADER
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "com/sun/org/apache/bcel/internal/util/ClassLoader", name: ~"loadClass|createClass" }
+    tainted: [{arg: 0}]
+
   # ---- magic-entry 终点 ----
   - id: JUST-ENTRY-READOBJECT
     kind: magic-entry
@@ -119,3 +167,17 @@ rules:
     match:
       method: { name: "invoke", descriptor: "(Ljava/lang/Object;Ljava/lang/reflect/Method;[Ljava/lang/Object;)Ljava/lang/Object;" }
       class: { implements: "java/lang/reflect/InvocationHandler" }
+
+  - id: JUST-ENTRY-COMPARE
+    kind: magic-entry
+    entryKind: compare
+    match:
+      method: { name: "compare", descriptor: "(Ljava/lang/Object;Ljava/lang/Object;)I" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-READEXTERNAL
+    kind: magic-entry
+    entryKind: readExternal
+    match:
+      method: { name: "readExternal", descriptor: "(Ljava/io/ObjectInput;)V" }
+      class: { implements: "java/io/Externalizable" }

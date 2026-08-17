@@ -43,6 +43,11 @@ public final class ScanPipeline {
 
     public static ScanResult run(Path target, List<Path> deps, Path output, Path rules,
                                  int maxDepth, boolean stats, boolean verbose) throws Exception {
+        return run(target, deps, output, rules, maxDepth, stats, verbose, false);
+    }
+
+    public static ScanResult run(Path target, List<Path> deps, Path output, Path rules,
+                                 int maxDepth, boolean stats, boolean verbose, boolean withJdk) throws Exception {
         if (verbose) {
             System.setProperty("just.log.level", "DEBUG");
         }
@@ -65,7 +70,9 @@ public final class ScanPipeline {
 
         // 构建期
         BytecodeFrontend frontend = new BytecodeFrontend();
-        LoadResult load = frontend.load(targets);
+        LoadResult load = withJdk
+                ? frontend.load(targets, new JrtClassSource().listAll(JrtClassSource.DESER_MODULES))
+                : frontend.load(targets);
         JustLogger.info("解析完成：{} 个类（{} 个文件），诊断 {} 条",
                 load.classCount(), load.filesScanned(), load.diagnosticCount());
 

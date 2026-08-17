@@ -66,6 +66,23 @@ class BenchmarkJarsRegressionTest {
         assertTrue(findings.contains("variant_count"), "findings 表头应包含 variant_count");
     }
 
+    @Test
+    void jdkFullAnalysisSurfacesJdkGadgetPrimitives(@TempDir Path outDir) throws Exception {
+        // --jdk：JDK 运行库全量参与分析；JDK 内部真实 gadget 原语应被检出
+        ScanPipeline.ScanResult result =
+                ScanPipeline.run(UNICTF, null, outDir.resolve("jdk"), null, 20, false, false, true);
+        List<Chain> chains = result.chains();
+
+        // 目标链不丢
+        assertTrue(hasChain(chains, "com/unictf/ctf/tools/ConfigDataWrapper", "toString",
+                        "java/lang/reflect/Method", "invoke"),
+                "--jdk 下 Unictf 目标链应保持检出");
+        // JDK7u21 链的处理器原语（javadoc 已知真实 gadget）
+        assertTrue(hasChain(chains, "sun/reflect/annotation/AnnotationInvocationHandler", "invoke",
+                        "java/lang/reflect/Method", "invoke"),
+                "--jdk 下应检出 AnnotationInvocationHandler 原语");
+    }
+
     private static boolean hasChain(List<Chain> chains, String entryClass, String entryMethod,
                                     String sinkClass, String sinkMethod) {
         return chains.stream().anyMatch(c ->

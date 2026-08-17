@@ -32,6 +32,9 @@ public final class ScanCommand implements Callable<Integer> {
             description = "反向回溯深度上限（默认 20）")
     int maxDepth;
 
+    @Option(names = "--jdk", description = "将 JDK 运行库（java.base/naming/rmi/management/scripting/sql）全量纳入分析，挖掘穿过 JDK 类的完整链")
+    boolean jdk;
+
     @Option(names = "--stats", description = "输出扫描统计")
     boolean stats;
 
@@ -41,7 +44,7 @@ public final class ScanCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            return ScanPipeline.run(target, deps, output, rules, maxDepth, stats, verbose).exitCode();
+            return ScanPipeline.run(target, deps, output, rules, maxDepth, stats, verbose, jdk).exitCode();
         } catch (ScanPipeline.UsageException e) {
             System.err.println("[just:error] " + e.getMessage());
             return ExitCode.USAGE.code();
