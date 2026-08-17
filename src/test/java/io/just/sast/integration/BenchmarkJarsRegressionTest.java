@@ -69,19 +69,19 @@ class BenchmarkJarsRegressionTest {
 
     @Test
     @Timeout(value = 900, unit = TimeUnit.SECONDS)
-    void javamixJarFindsTreeMultimapChain(@TempDir Path outDir) throws Exception {
+    void javamixJarFindsWpChainComponents(@TempDir Path outDir) throws Exception {
         List<Chain> chains = scan(JAVAMIX, outDir.resolve("javamix"));
 
-        // WP 双层链入口：TreeMultimap.readObject 读入攻击者 comparator，经 JDK TreeMap 触发
-        // 危险 sink（反射调用 / 动态类加载）
-        assertTrue(chains.stream().anyMatch(c ->
-                        c.entryClass().equals("com/google/common/collect/TreeMultimap")
-                                && c.entryMethod().equals("readObject")
-                                && c.sinkClass().equals("java/lang/reflect/Method") && c.sinkMethod().equals("invoke")
-                        || (c.entryClass().equals("com/google/common/collect/TreeMultimap")
-                                && c.entryMethod().equals("readObject")
-                                && c.sinkClass().equals("java/lang/Class") && c.sinkMethod().equals("forName"))),
-                "javamix 应检出 TreeMultimap.readObject 链（WP 双层链入口）");
+        // WP 双层链的真实构件（javap/WP 确认）：TreeMultimap 入口链 + MapProxy 代理构件 + vaadin 反射构件
+        assertTrue(hasChain(chains, "com/google/common/collect/TreeMultimap", "readObject",
+                        "java/lang/Class", "forName"),
+                "javamix 应检出 TreeMultimap.readObject 入口链（WP 外层链入口）");
+        assertTrue(hasChain(chains, "cn/hutool/core/map/MapProxy", "invoke",
+                        "java/lang/Class", "forName"),
+                "javamix 应检出 MapProxy 代理构件链（WP 外层链构件）");
+        assertTrue(hasChain(chains, "com/vaadin/data/util/MethodProperty", "readObject",
+                        "java/lang/reflect/Method", "invoke"),
+                "javamix 应检出 vaadin MethodProperty 反射链（WP 内层链构件）");
     }
 
     @Test

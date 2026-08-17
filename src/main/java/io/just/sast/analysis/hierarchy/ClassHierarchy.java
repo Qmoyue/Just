@@ -23,6 +23,7 @@ public final class ClassHierarchy {
     private final Map<String, List<String>> directSubtypes = new HashMap<>();
     private final Map<String, Boolean> subtypeCache = new HashMap<>();
     private final Map<String, String> resolveCache = new HashMap<>();
+    private final Map<String, List<String>> implementersCache = new HashMap<>();
 
     public ClassHierarchy(Map<String, ClassInfo> initial, JdkClassSource jdk) {
         this.classes = new HashMap<>(initial);
@@ -178,9 +179,12 @@ public final class ClassHierarchy {
     }
 
     /**
-     * 接口实现类（传递，非接口类），超上限返回 null 表示放弃枚举。
+     * 接口实现类（传递，非接口类），超上限返回 null 表示放弃枚举。带缓存。
      */
     public List<String> implementers(String interfaceName, int cap) {
+        if (implementersCache.containsKey(interfaceName)) {
+            return implementersCache.get(interfaceName);
+        }
         List<String> result = new ArrayList<>();
         Deque<String> queue = new ArrayDeque<>();
         Set<String> visited = new HashSet<>();
@@ -200,11 +204,14 @@ public final class ClassHierarchy {
                 } else {
                     result.add(sub);
                     if (result.size() > cap) {
+                        implementersCache.put(interfaceName, null);
                         return null;
                     }
                 }
             }
         }
-        return result;
+        List<String> cached = List.copyOf(result);
+        implementersCache.put(interfaceName, cached);
+        return cached;
     }
 }
