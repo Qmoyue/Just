@@ -120,7 +120,26 @@ public final class Blackboard {
         return entryMarks.size();
     }
 
-    // ---- 链产物（KS2 写） ----
+    // ---- 链产物（KS2/KS4 写） ----
+
+    /** 链校准（KS3 写）：链 key → 拒绝理由；报告层过滤被拒绝的链。 */
+    private final Map<String, String> chainCalibrations = new HashMap<>();
+
+    public void calibrateChain(String chainKey, String reason) {
+        chainCalibrations.put(chainKey, reason);
+    }
+
+    public String calibrationOf(String chainKey) {
+        return chainCalibrations.get(chainKey);
+    }
+
+    public Map<String, String> chainCalibrations() {
+        return chainCalibrations;
+    }
+
+    public int calibrationCount() {
+        return chainCalibrations.size();
+    }
 
     /** 记录链；按 key 去重。返回是否为新链。 */
     public synchronized boolean addChain(Chain chain) {

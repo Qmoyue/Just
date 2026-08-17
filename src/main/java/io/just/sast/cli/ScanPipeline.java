@@ -82,7 +82,7 @@ public final class ScanPipeline {
 
         // 报告期
         CsvReporter reporter = new CsvReporter();
-        reporter.write(output, blackboard.chains(), blackboard.sinkOutcomes());
+        reporter.write(output, blackboard.chains(), blackboard.sinkOutcomes(), blackboard.chainCalibrations());
         JustLogger.info("CSV 已输出到 {}", output.toAbsolutePath());
 
         ScanStatistics scanStats = new ScanStatistics(

@@ -231,7 +231,7 @@ public final class ForwardTaintKnowledgeSource implements KnowledgeSource {
                 continue;
             }
             ChainHop entryHop = new ChainHop(entry.className(), method.strProp("name"),
-                    entry.className(), method.strProp("name"), HopKind.ENTRY, null, entry.entryKind());
+                    entry.className(), method.strProp("name"), HopKind.ENTRY, null, entry.entryKind(), "");
             addThis(entry.className(), List.of(entryHop));
         }
     }
@@ -350,7 +350,7 @@ public final class ForwardTaintKnowledgeSource implements KnowledgeSource {
         Node call = bb.graph().node(callNodeId);
         if (isOisRead(call)) {
             ChainHop entryHop = new ChainHop(method.owner(), method.name(),
-                    method.owner(), method.name(), HopKind.ENTRY, null, "deserialization");
+                    method.owner(), method.name(), HopKind.ENTRY, null, "deserialization", "");
             return List.of(entryHop);
         }
         ForwardOrigins.State state = origins.compute(method).stateBefore().get(call.prop("offset"));
@@ -368,7 +368,8 @@ public final class ForwardTaintKnowledgeSource implements KnowledgeSource {
                         for (Edge edge : call.out()) {
                             if (edge.type() == EdgeType.INVOKES || edge.type() == EdgeType.DISPATCHES) {
                                 addThis(edge.to().strProp("owner"), hopTo(receiverPath, method,
-                                        edge.to().strProp("owner"), edge.to().strProp("name"), edge.type()));
+                                        edge.to().strProp("owner"), edge.to().strProp("name"),
+                                        edge.to().strProp("desc"), edge.type()));
                             }
                         }
                         best = receiverPath;
@@ -390,7 +391,8 @@ public final class ForwardTaintKnowledgeSource implements KnowledgeSource {
                     if (edge.type() == EdgeType.INVOKES || edge.type() == EdgeType.DISPATCHES) {
                         addParam(edge.to().strProp("owner"), edge.to().strProp("name"),
                                 edge.to().strProp("desc"), slot, hopTo(argPath, method,
-                                        edge.to().strProp("owner"), edge.to().strProp("name"), edge.type()));
+                                        edge.to().strProp("owner"), edge.to().strProp("name"),
+                                        edge.to().strProp("desc"), edge.type()));
                     }
                 }
             }
@@ -498,13 +500,13 @@ public final class ForwardTaintKnowledgeSource implements KnowledgeSource {
     }
 
     private static List<ChainHop> hopTo(List<ChainHop> parent, MethodInfo from,
-                                        String toOwner, String toName, EdgeType type) {
+                                        String toOwner, String toName, String toDesc, EdgeType type) {
         if (parent.size() >= MAX_HOPS) {
             return parent;
         }
         List<ChainHop> path = new ArrayList<>(parent);
         path.add(new ChainHop(from.owner(), from.name(), toOwner, toName,
-                type == EdgeType.DISPATCHES ? HopKind.VIRTUAL_DISPATCH : HopKind.DIRECT_CALL, null, "call"));
+                type == EdgeType.DISPATCHES ? HopKind.VIRTUAL_DISPATCH : HopKind.DIRECT_CALL, null, "call", toDesc));
         return path;
     }
 

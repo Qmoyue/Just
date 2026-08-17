@@ -22,13 +22,17 @@ import java.util.Map;
  */
 public final class CsvReporter {
 
-    public void write(Path outDir, List<Chain> chains, Map<Long, SinkOutcome> outcomes) throws IOException {
+    public void write(Path outDir, List<Chain> chains, Map<Long, SinkOutcome> outcomes,
+                      Map<String, String> calibrations) throws IOException {
         Files.createDirectories(outDir);
         List<Row> findings = new ArrayList<>();
         List<Row> edges = new ArrayList<>();
         // 按 (entry, sink, category) 折叠：代表链取最短路径，其余计入 variant_count
         Map<String, List<Chain>> groups = new java.util.LinkedHashMap<>();
         for (Chain chain : chains) {
+            if (calibrations.containsKey(chain.key())) {
+                continue; // KS3 PASM 拒绝的链
+            }
             groups.computeIfAbsent(pairKey(chain), k -> new ArrayList<>()).add(chain);
         }
         // 高可用链置顶：置信度 → 质量（无未解析） → 链长 → 变体数
@@ -60,15 +64,11 @@ public final class CsvReporter {
                 + chain.sinkClass() + "#" + chain.sinkMethod() + "|" + chain.category();
     }
 
-    /** 组排序：置信度（HIGH 置顶）→ 质量（无未解析优先） → 链长（短优先） → 变体数（多优先）。 */
+    /** 组排序：证据分值降序（高证据链置顶） → 链长（短优先） → 变体数（多优先）。 */
     private static int compareGroups(List<Chain> g1, List<Chain> g2) {
         Chain c1 = g1.stream().min(java.util.Comparator.comparingInt(c -> c.hops().size())).orElseThrow();
         Chain c2 = g2.stream().min(java.util.Comparator.comparingInt(c -> c.hops().size())).orElseThrow();
-        int cmp = Integer.compare(ConfidenceScorer.rank(c1), ConfidenceScorer.rank(c2));
-        if (cmp != 0) {
-            return cmp;
-        }
-        cmp = Integer.compare(c1.unresolvedHops(), c2.unresolvedHops());
+        int cmp = Integer.compare(ConfidenceScorer.evidenceScore(c2), ConfidenceScorer.evidenceScore(c1));
         if (cmp != 0) {
             return cmp;
         }
@@ -83,7 +83,7 @@ public final class CsvReporter {
         return pairKey(c1).compareTo(pairKey(c2));
     }
 
-    private static final String FINDINGS_HEADER = "chain_id,rule_id,category,severity,confidence,quality,"
+    private static final String FINDINGS_HEADER = "chain_id,rule_id,category,severity,confidence,confidence_score,quality,"
             + "entry_class,entry_method,entry_kind,sink_class,sink_method,sink_kind,"
             + "chain_length,unresolved_hops,variant_count,path,evidence";
 
@@ -108,7 +108,8 @@ public final class CsvReporter {
         String quality = chain.unresolvedHops() > 0 ? "PARTIAL(unresolved=" + chain.unresolvedHops() + ")" : "COMPLETE";
         String path = pathSummary(chain);
         String evidence = evidence(chain);
-        return new Row(chainId, chain.ruleId(), chain.category(), chain.severity(), confidence, quality,
+        return new Row(chainId, chain.ruleId(), chain.category(), chain.severity(), confidence,
+                String.valueOf(ConfidenceScorer.evidenceScore(chain)), quality,
                 chain.entryClass(), chain.entryMethod(), chain.entryKind(),
                 chain.sinkClass(), chain.sinkMethod(), chain.category(),
                 String.valueOf(chain.hops().size()), String.valueOf(chain.unresolvedHops()),

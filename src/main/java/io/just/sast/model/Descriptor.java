@@ -44,6 +44,12 @@ public final class Descriptor {
         return slots;
     }
 
+    /** 返回类型：方法描述符 ')' 之后的部分。 */
+    public static String returnType(String methodDescriptor) {
+        int close = methodDescriptor.indexOf(')');
+        return close >= 0 ? methodDescriptor.substring(close + 1) : "Ljava/lang/Object;";
+    }
+
     private static int next(String args, int i) {
         char c = args.charAt(i);
         if (c == '[') {

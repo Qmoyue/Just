@@ -4,7 +4,16 @@ import io.just.sast.blackboard.Chain;
 import io.just.sast.blackboard.ChainHop;
 import io.just.sast.blackboard.HopKind;
 
-/** 置信度评分：按路径证据分级（不依赖 sink 匹配方式）。 */
+/**
+ * 证据化置信度评分：逐跳证据 + 入口权重 + 严重度加成，产出可复核的分值与分桶。
+ * 分值依据（每条链的 CSV evidence 列可逐项核对）：
+ * 逐跳：DIRECT_CALL +1；FIELD_FLOW +1（带字段名）；VIRTUAL_DISPATCH 0；LAMBDA 0
+ * 入口：readObject/readResolve/readObjectNoData/readExternal/hashCode/proxyInvoke +2；
+ *       equals/compareTo/compare/toString/finalize +1；deserialization（OIS 源）+1
+ * 严重度：HIGH +1
+ * 惩罚：unresolved × 2
+ * 分桶：score ≥ 5 → HIGH；≥ 3 → MEDIUM；否则 LOW
+ */
 public final class ConfidenceScorer {
 
     private ConfidenceScorer() {}
@@ -17,24 +26,40 @@ public final class ConfidenceScorer {
         };
     }
 
-    /**
-     * 置信度等级（数字越小越高，供排序）：
-     * 0 = HIGH（全程直接调用、无未解析）
-     * 1 = MEDIUM（含 CHA 虚分发/lambda 等弱证据）
-     * 2 = LOW（含未解析跳）
-     * 字段流转（FIELD_FLOW）是反序列化链的正常证据，不降级。
-     */
-    public static int rank(Chain chain) {
-        boolean weak = false;
+    /** 证据分值（越大越可信，供排序与分桶）。 */
+    public static int evidenceScore(Chain chain) {
+        int points = 0;
         for (ChainHop hop : chain.hops()) {
-            HopKind kind = hop.kind();
-            if (kind == HopKind.VIRTUAL_DISPATCH || kind == HopKind.LAMBDA) {
-                weak = true;
-            }
+            points += switch (hop.kind()) {
+                case DIRECT_CALL, FIELD_FLOW -> 1;
+                case VIRTUAL_DISPATCH, LAMBDA -> 0;
+                case ENTRY -> 0;
+            };
         }
-        if (chain.unresolvedHops() > 0) {
-            return weak ? 2 : 1;
+        points += entryWeight(chain.entryKind());
+        if ("HIGH".equals(chain.severity())) {
+            points += 1;
         }
-        return weak ? 1 : 0;
+        points -= chain.unresolvedHops() * 2;
+        return points;
+    }
+
+    /** 置信度等级（数字越小越高）。 */
+    public static int rank(Chain chain) {
+        int score = evidenceScore(chain);
+        return score >= 5 ? 0 : score >= 3 ? 1 : 2;
+    }
+
+    private static int entryWeight(String entryKind) {
+        if (entryKind == null) {
+            return 0;
+        }
+        return switch (entryKind) {
+            case "readObject", "readResolve", "readObjectNoData", "readExternal",
+                    "hashCode", "proxyInvoke" -> 2;
+            case "equals", "compareTo", "compare", "toString", "finalize" -> 1;
+            case "deserialization" -> 1;
+            default -> 1;
+        };
     }
 }

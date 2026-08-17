@@ -372,11 +372,23 @@ RFC 4180 转义；UTF-8 with BOM（Excel 中文不乱码）；统计与日志走
 
 | 候选知识源 | 借鉴 | 作用 | 计划 |
 |---|---|---|---|
-| **KS3 上下文敏感补扫（已实现）** | 独立预算重扫 | 对 KS2 未命中的 sink 以全新预算补扫，消除扫描顺序影响 | v0.1 ✓ |
-| **KS4 前向对象污点引擎（已实现）** | Gadget Inspector 前向两段式（方法摘要 + 事实不动点） | 从 magic entry/OIS 正向传播"反序列化对象"污点（对象→字段→返回值→实参/接收者），不逐调用点枚举；补齐反向引擎在接口扇出处的命中能力（javamix TreeMultimap/MapProxy 链由 KS2+KS4 合围检出） | v0.1 ✓ |
-| KS5 链可行性验证（PASM-lite） | Gadget Inspector 的 PASM（类型约束模拟） | 校验链上每跳的运行时类型约束，剔除"纸上链" | v0.2 |
-| KS6 分配点敏感（轻量指针分析） | tabby（Soot points-to） | 区分同字段不同实例，消除字段碰撞假链 | v0.2 |
-| KS7 反射/代理/lambda 按需解析 | CodeQL models-as-data | 反向遇反射/代理/indy 时向黑板提需求，解析后重新投递（EDGE_ADDED 反馈环） | v0.2 |
+| **KS3 链可行性验证 PASM-lite（已实现）** | Gadget Inspector 的 PASM（Partial Assembly，类型约束装配） | 沿链逐跳验证运行时类型约束：字段声明类型、调用 owner 兼容性、虚分发目标可达性、sink 参数兼容；不满足即拒绝（REJECT 校准），剔"纸上链" | v0.1 ✓ |
+| **KS4 前向对象污点引擎（已实现）** | Gadget Inspector 前向两段式（方法摘要 + 事实不动点） | 从 magic entry/OIS 正向传播"反序列化对象"污点，不逐调用点枚举；补齐反向引擎在接口扇出处的命中能力 | v0.1 ✓ |
+| KS5 分配点敏感（轻量指针分析） | tabby（Soot points-to） | 区分同字段不同实例，消除字段碰撞假链 | v0.2 |
+| KS6 反射/代理/lambda 按需解析 | CodeQL models-as-data | 反向遇反射/代理/indy 时向黑板提需求，解析后重新投递（EDGE_ADDED 反馈环） | v0.2 |
+
+**KS3 PASM 校验规则（保守，只拒绝可证明不可能的链）：**
+
+```text
+沿链（entry→sink）维护当前值的可能运行时类型集：
+1. FIELD_FLOW(f)：类型集 ← 各可能 owner 类型的 f 字段声明类型（字段类型 Object 等宽类型视为任意）
+2. DIRECT_CALL/VIRTUAL_DISPATCH(A.m→B.n)：接收者类型集须有子类型于 A，且 resolveMethod 结果为 B；
+   否则拒绝（类型不兼容/分发不可达）；之后类型集 ← m 的返回类型
+3. LAMBDA：跳过（未知通过）
+4. 终局：sink 参数类型须兼容当前类型集，否则拒绝
+```
+
+拒绝理由写入黑板校准（chainCalibrations），报告层过滤被拒绝的链。
 
 **置信度评分规范（证据化，逐条可复核）：**
 
@@ -412,4 +424,4 @@ public interface KnowledgeSource {
 插件约定（新增知识源三步）：实现接口 → 写入
 `META-INF/services/io.just.sast.blackboard.KnowledgeSource` → 回归测试。
 内置 KS 位于 `io.just.sast.knowledge.ks1`（模式匹配）、`io.just.sast.knowledge.ks2`（反向污点）、
-`io.just.sast.knowledge.ks4`（前向对象污点）。KS3 号保留给"链可行性验证（PASM-lite）"。
+`io.just.sast.knowledge.ks3`（PASM 链可行性验证）、`io.just.sast.knowledge.ks4`（前向对象污点）。

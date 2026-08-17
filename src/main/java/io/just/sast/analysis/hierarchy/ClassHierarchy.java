@@ -178,6 +178,23 @@ public final class ClassHierarchy {
         return null;
     }
 
+    /** 字段解析：沿父类链找字段声明类；未找到返回 null。 */
+    public String resolveField(String owner, String name) {
+        String current = owner;
+        Set<String> visited = new HashSet<>();
+        while (current != null && visited.add(current)) {
+            ClassInfo cls = classInfo(current);
+            if (cls == null) {
+                return null; // 类不可解析：无法证明存在，保守由调用方处理
+            }
+            if (cls.field(name) != null) {
+                return current;
+            }
+            current = cls.superName();
+        }
+        return null;
+    }
+
     /**
      * 接口实现类（传递，非接口类），超上限返回 null 表示放弃枚举。带缓存。
      */

@@ -218,7 +218,8 @@ public final class BackwardTaintAnalysis implements KnowledgeSource {
                 continue;
             }
             ChainHop hop = new ChainHop(callerMethod.owner(), callerMethod.name(),
-                    method.owner(), method.name(), hopKindOf(edge.type()), null, "call");
+                    method.owner(), method.name(), hopKindOf(edge.type()), null, "call",
+                    method.descriptor());
             int unresolvedBefore = trace.unresolved;
             trace.hops.add(hop);
             for (ValueOrigin argOrigin : argOrigins) {
@@ -313,7 +314,7 @@ public final class BackwardTaintAnalysis implements KnowledgeSource {
         int produced = 0;
         if (isSerializedField(fieldRead.owner(), fieldRead.field())) {
             ChainHop hop = new ChainHop(method.owner(), method.name(),
-                    method.owner(), method.name(), HopKind.FIELD_FLOW, fieldRead.field(), "field-read");
+                    method.owner(), method.name(), HopKind.FIELD_FLOW, fieldRead.field(), "field-read", "");
             int unresolvedBefore = trace.unresolved;
             trace.hops.add(hop);
             produced += controlled(fieldRead.receiver(), method, depth + 1, trace, mark);
@@ -340,7 +341,7 @@ public final class BackwardTaintAnalysis implements KnowledgeSource {
                 continue;
             }
             ChainHop hop = new ChainHop(writerMethod.owner(), writerMethod.name(),
-                    method.owner(), method.name(), HopKind.FIELD_FLOW, fieldRead.field(), "field-write");
+                    method.owner(), method.name(), HopKind.FIELD_FLOW, fieldRead.field(), "field-write", "");
             int unresolvedBefore = trace.unresolved;
             trace.hops.add(hop);
             for (ValueOrigin valueOrigin : state.stack().get(state.stack().size() - 1)) {
@@ -363,7 +364,7 @@ public final class BackwardTaintAnalysis implements KnowledgeSource {
             return 0;
         }
         List<ChainHop> hops = new ArrayList<>(trace.hops);
-        hops.add(new ChainHop(entryClass, entryMethod, entryClass, entryMethod, HopKind.ENTRY, null, reason));
+        hops.add(new ChainHop(entryClass, entryMethod, entryClass, entryMethod, HopKind.ENTRY, null, reason, ""));
         Chain chain = new Chain(mark.ruleId(), mark.category(), mark.severity(),
                 entryClass, entryMethod, entryKind,
                 trace.sinkOwner, trace.sinkMethod, hops, trace.unresolved);
