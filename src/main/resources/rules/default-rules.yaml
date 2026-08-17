@@ -1,0 +1,121 @@
+rules:
+  # ---- sink 起点 ----
+  - id: JUST-SINK-COMMAND-EXEC-RUNTIME
+    kind: sink
+    category: COMMAND_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/Runtime", name: "exec" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-COMMAND-EXEC-PROCESSBUILDER
+    kind: sink
+    category: COMMAND_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/ProcessBuilder", name: "start" }
+    tainted: [{receiver: true}]
+
+  - id: JUST-SINK-CLASSLOAD-FORNAME
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/Class", name: "forName" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-CLASSLOAD-NEWINSTANCE
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/Class", name: "newInstance" }
+    tainted: [{receiver: true}]
+
+  - id: JUST-SINK-TEMPLATESIMPL
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "com/sun/org/apache/xalan/internal/xsltc/trax/TemplatesImpl", name: ~"getOutputProperties|newTransformer" }
+    tainted: [{receiver: true}]
+
+  - id: JUST-SINK-JNDI-LOOKUP
+    kind: sink
+    category: JNDI
+    severity: HIGH
+    match:
+      call: { owner: "javax/naming/Context", name: ~"lookup|list|bind" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-REFLECTIVE-INVOKE
+    kind: sink
+    category: REFLECTIVE_INVOKE
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/reflect/Method", name: "invoke" }
+    tainted: [{arg: 0}, {arg: 1}]
+
+  # ---- magic-entry 终点 ----
+  - id: JUST-ENTRY-READOBJECT
+    kind: magic-entry
+    entryKind: readObject
+    match:
+      method: { name: "readObject", descriptor: "(Ljava/io/ObjectInputStream;)V" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-READRESOLVE
+    kind: magic-entry
+    entryKind: readResolve
+    match:
+      method: { name: "readResolve", descriptor: "()Ljava/lang/Object;" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-READOBJECTNODATA
+    kind: magic-entry
+    entryKind: readObjectNoData
+    match:
+      method: { name: "readObjectNoData", descriptor: "()V" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-HASHCODE
+    kind: magic-entry
+    entryKind: hashCode
+    match:
+      method: { name: "hashCode", descriptor: "()I" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-EQUALS
+    kind: magic-entry
+    entryKind: equals
+    match:
+      method: { name: "equals", descriptor: "(Ljava/lang/Object;)Z" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-COMPARETO
+    kind: magic-entry
+    entryKind: compareTo
+    match:
+      method: { name: "compareTo", descriptor: "(Ljava/lang/Object;)I" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-TOSTRING
+    kind: magic-entry
+    entryKind: toString
+    match:
+      method: { name: "toString", descriptor: "()Ljava/lang/String;" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-FINALIZE
+    kind: magic-entry
+    entryKind: finalize
+    match:
+      method: { name: "finalize", descriptor: "()V" }
+      class: { implements: "java/io/Serializable" }
+
+  - id: JUST-ENTRY-PROXY-INVOKE
+    kind: magic-entry
+    entryKind: proxyInvoke
+    match:
+      method: { name: "invoke", descriptor: "(Ljava/lang/Object;Ljava/lang/reflect/Method;[Ljava/lang/Object;)Ljava/lang/Object;" }
+      class: { implements: "java/lang/reflect/InvocationHandler" }

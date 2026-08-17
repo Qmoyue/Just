@@ -1,0 +1,132 @@
+package io.just.sast.analysis.callgraph;
+
+import io.just.sast.analysis.hierarchy.ClassHierarchy;
+import io.just.sast.cpg.graph.EdgeType;
+import io.just.sast.cpg.graph.Graph;
+import io.just.sast.cpg.graph.Node;
+import io.just.sast.cpg.graph.NodeType;
+import io.just.sast.model.HandleRef;
+import io.just.sast.model.InvokeDynamicRef;
+import io.just.sast.util.JustLogger;
+
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
+/**
+ * CHA 调用图构建：静态/特殊调用定目标；虚调用/接口调用按子类型分发；
+ * invokedynamic 解析 LambdaMetafactory → lambda 实现方法。
+ * 反射与动态代理边不在此处盲加（噪音大），由 KS2 按需解析。
+ */
+public final class CallGraphBuilder {
+
+    private static final int DISPATCH_CAP = 100;
+    private static final String LAMBDA_METAFACTORY = "java/lang/invoke/LambdaMetafactory";
+
+    private final ClassHierarchy hierarchy;
+
+    public CallGraphBuilder(ClassHierarchy hierarchy) {
+        this.hierarchy = hierarchy;
+    }
+
+    /** 返回添加的调用边数。 */
+    public int build(Graph graph) {
+        int edgeCount = 0;
+        for (Node call : graph.nodesOfType(NodeType.CALL)) {
+            String kind = call.strProp("invokeKind");
+            String owner = call.strProp("owner");
+            String name = call.strProp("name");
+            String desc = call.strProp("desc");
+            switch (kind) {
+                case "STATIC", "SPECIAL" -> {
+                    String target = hierarchy.resolveMethod(owner, name, desc);
+                    graph.addEdge(call, graph.methodNode(owner, name, desc, target == null), EdgeType.INVOKES, kind);
+                    edgeCount++;
+                }
+                case "VIRTUAL" -> edgeCount += addVirtual(graph, call, owner, name, desc);
+                case "INTERFACE" -> edgeCount += addInterface(graph, call, owner, name, desc);
+                case "DYNAMIC" -> edgeCount += addLambda(graph, call, (InvokeDynamicRef) call.prop("indy"));
+                default -> JustLogger.debug("未知调用类型 {}: {}#{}", kind, owner, name);
+            }
+        }
+        return edgeCount;
+    }
+
+    private int addVirtual(Graph graph, Node call, String owner, String name, String desc) {
+        String declared = hierarchy.resolveMethod(owner, name, desc);
+        List<String> subtypes = hierarchy.loadedSubtypes(owner);
+        if (declared == null && subtypes.isEmpty()) {
+            graph.addEdge(call, graph.methodNode(owner, name, desc, true), EdgeType.INVOKES, "VIRTUAL");
+            return 1;
+        }
+        Set<String> targets = new LinkedHashSet<>();
+        if (declared != null) {
+            targets.add(declared);
+        }
+        if (subtypes.size() > DISPATCH_CAP) {
+            call.propsNote("dispatchSkipped", subtypes.size());
+        } else {
+            for (String sub : subtypes) {
+                String resolved = hierarchy.resolveMethod(sub, name, desc);
+                if (resolved != null) {
+                    targets.add(resolved);
+                }
+            }
+        }
+        if (targets.isEmpty()) {
+            graph.addEdge(call, graph.methodNode(owner, name, desc, true), EdgeType.INVOKES, "VIRTUAL");
+            return 1;
+        }
+        int count = 0;
+        for (String target : targets) {
+            graph.addEdge(call, graph.methodNode(target, name, desc, false), EdgeType.DISPATCHES, "VIRTUAL");
+            count++;
+        }
+        return count;
+    }
+
+    private int addInterface(Graph graph, Node call, String owner, String name, String desc) {
+        String declared = hierarchy.resolveMethod(owner, name, desc);
+        List<String> impls = hierarchy.implementers(owner, DISPATCH_CAP);
+        Set<String> targets = new LinkedHashSet<>();
+        if (declared != null) {
+            targets.add(declared);
+        }
+        if (impls != null) {
+            for (String impl : impls) {
+                String resolved = hierarchy.resolveMethod(impl, name, desc);
+                if (resolved != null) {
+                    targets.add(resolved);
+                }
+            }
+        } else {
+            call.propsNote("dispatchSkipped", "implementers-over-cap");
+        }
+        if (targets.isEmpty()) {
+            graph.addEdge(call, graph.methodNode(owner, name, desc, true), EdgeType.INVOKES, "INTERFACE");
+            return 1;
+        }
+        int count = 0;
+        for (String target : targets) {
+            graph.addEdge(call, graph.methodNode(target, name, desc, false), EdgeType.DISPATCHES, "INTERFACE");
+            count++;
+        }
+        return count;
+    }
+
+    private int addLambda(Graph graph, Node call, InvokeDynamicRef indy) {
+        if (indy == null) {
+            return 0;
+        }
+        if (LAMBDA_METAFACTORY.equals(indy.bootstrap().owner()) && indy.bootstrapArgs().size() > 1) {
+            Object impl = indy.bootstrapArgs().get(1);
+            if (impl instanceof HandleRef h) {
+                String target = hierarchy.resolveMethod(h.owner(), h.name(), h.descriptor());
+                graph.addEdge(call, graph.methodNode(h.owner(), h.name(), h.descriptor(), target == null),
+                        EdgeType.LAMBDA, "LAMBDA");
+                return 1;
+            }
+        }
+        return 0;
+    }
+}
