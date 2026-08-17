@@ -11,3 +11,4 @@ dependency-reduced-pom.xml
 benchmark/
 docs/development.md
 .agents/
+/just-sast-*.jar
