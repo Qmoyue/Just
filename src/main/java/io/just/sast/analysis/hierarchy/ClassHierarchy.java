@@ -211,7 +211,8 @@ public final class ClassHierarchy {
             if (!visited.add(cur)) {
                 continue;
             }
-            for (String sub : loadedSubtypes(cur)) {
+            // 快照遍历：classInfo 懒加载可能向 directSubtypes 追加（单线程 CME）
+            for (String sub : new ArrayList<>(loadedSubtypes(cur))) {
                 ClassInfo ci = classInfo(sub);
                 if (ci == null) {
                     continue;

@@ -45,7 +45,10 @@ public final class Controller {
                     ks.onEvent(blackboard, event);
                     dispatched++;
                 } catch (Exception e) {
-                    JustLogger.error("知识源 {} 处理事件 {} 失败: {}", ks.id(), event.type(), e.getMessage());
+                    JustLogger.error("知识源 {} 处理事件 {} 失败: {}", ks.id(), event.type(), e.toString());
+                    if (JustLogger.isDebug()) {
+                        e.printStackTrace();
+                    }
                 }
             }
         }

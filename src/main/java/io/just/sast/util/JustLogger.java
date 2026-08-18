@@ -36,6 +36,10 @@ public final class JustLogger {
         log(Level.ERROR, msg, args);
     }
 
+    public static boolean isDebug() {
+        return level.ordinal() <= Level.DEBUG.ordinal();
+    }
+
     private static void log(Level lv, String msg, Object... args) {
         if (lv.ordinal() < level.ordinal()) {
             return;

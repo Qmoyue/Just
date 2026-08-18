@@ -1,4 +1,5 @@
 io.just.sast.knowledge.ks1.PatternKnowledgeSource
 io.just.sast.knowledge.ks2.BackwardTaintAnalysis
 io.just.sast.knowledge.ks4.ForwardTaintKnowledgeSource
+io.just.sast.knowledge.ks5.AllocationSensitiveTaintKnowledgeSource
 io.just.sast.knowledge.ks3.PasmKnowledgeSource

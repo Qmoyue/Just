@@ -6,6 +6,7 @@ import io.just.sast.cpg.graph.Graph;
 import io.just.sast.cpg.graph.Node;
 import io.just.sast.cpg.graph.NodeType;
 import io.just.sast.model.HandleRef;
+import java.util.ArrayList;
 import io.just.sast.model.InvokeDynamicRef;
 import io.just.sast.util.JustLogger;
 
@@ -55,7 +56,7 @@ public final class CallGraphBuilder {
 
     private int addVirtual(Graph graph, Node call, String owner, String name, String desc) {
         String declared = hierarchy.resolveMethod(owner, name, desc);
-        List<String> subtypes = hierarchy.loadedSubtypes(owner);
+        List<String> subtypes = new ArrayList<>(hierarchy.loadedSubtypes(owner));
         if (declared == null && subtypes.isEmpty()) {
             graph.addEdge(call, graph.methodNode(owner, name, desc, true), EdgeType.INVOKES, "VIRTUAL");
             return 1;
