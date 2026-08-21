@@ -1,48 +1,51 @@
-package io.just.sast.knowledge.ks10;
+package io.just.sast.knowledge.calibrate;
 
 import io.just.sast.blackboard.Blackboard;
 import io.just.sast.blackboard.Chain;
+import io.just.sast.blackboard.ChainHop;
 import io.just.sast.blackboard.Event;
 import io.just.sast.blackboard.EventType;
+import io.just.sast.blackboard.HopKind;
 import io.just.sast.blackboard.KnowledgeSource;
 import io.just.sast.blackboard.Phase;
+import io.just.sast.chain.ConfidenceScorer;
 import io.just.sast.cpg.graph.Edge;
 import io.just.sast.cpg.graph.EdgeType;
 import io.just.sast.cpg.graph.Node;
 import io.just.sast.cpg.graph.NodeType;
-import io.just.sast.model.ClassInfo;
 import io.just.sast.model.MethodInfo;
 import io.just.sast.util.JustLogger;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * KS10 触发上下文校准（CALIBRATION 阶段）。
- * hashCode/equals/compareTo/compare/toString 类入口不被 OIS 机制自动调用——链要成立，
- * 必须有反序列化可达的调用者触发入口方法（HashMap.readObject→hash(key)→hashCode、
- * TreeMap→compareTo、BadAttributeValueExpException.readObject→val.toString 等）。
- * 入口方法在"入口/OIS 宿主下游集"（含字段中介边，与 KS2 剪枝集同构）内无任何调用者
- * → 链不可能在反序列化过程中触发，拒绝。机制调用的入口类别（readObject 族/proxyInvoke/
- * deserialization）不校验。
+ * 链剪枝知识源（CALIBRATION 阶段，合并原 KS10 触发上下文 + KS11 机制去重）。
+ * 两层剪枝：
+ * 1. 触发上下文：hashCode/equals/compareTo/compare/toString 入口须有反序列化可达触发者（原 KS10）
+ * 2. 机制去重：同机制尾按入口家族留 ≤5 条代表（原 KS11）
+ * 顺序：先精化（validator）后去重（本源须在 ChainValidator 之后执行）。
  */
-public final class TriggerContextKnowledgeSource implements KnowledgeSource {
+public final class ChainPrunerKnowledgeSource implements KnowledgeSource {
 
-    /** 须触发者的入口类别（OIS 机制不自动调用）。 */
     private static final Set<String> TRIGGER_REQUIRED = Set.of(
             "hashCode", "equals", "compareTo", "compare", "toString");
+    private static final int MAX_FAMILIES = 5;
 
     private Blackboard bb;
 
     @Override
     public String id() {
-        return "trigger-context";
+        return "chain-pruner";
     }
 
     @Override
@@ -65,29 +68,56 @@ public final class TriggerContextKnowledgeSource implements KnowledgeSource {
         if (event.type() != EventType.SCAN_COMPLETE) {
             return;
         }
+        // 1. 触发上下文
         Set<String> downstream = entryDownstream();
-        int rejected = 0;
-        int checked = 0;
+        int noTrigger = 0;
         for (Chain chain : bb.chains()) {
             if (!TRIGGER_REQUIRED.contains(chain.entryKind())
                     || bb.calibrationOf(chain.key()) != null) {
                 continue;
             }
-            checked++;
             if (!hasReachableTrigger(chain, downstream)) {
                 bb.calibrateChain(chain.key(), "no-trigger");
-                rejected++;
+                noTrigger++;
             }
         }
-        JustLogger.info("KS10 触发上下文：校验 {} 条链，拒绝 {} 条（无反序列化可达触发者）", checked, rejected);
+        // 2. 机制去重（按家族）
+        Map<String, List<Chain>> groups = new LinkedHashMap<>();
+        for (Chain chain : bb.chains()) {
+            if (bb.calibrationOf(chain.key()) != null) {
+                continue; // 已被前面校验拒绝的不再处理
+            }
+            groups.computeIfAbsent(mechanismKey(chain), k -> new ArrayList<>()).add(chain);
+        }
+        int dedup = 0;
+        for (List<Chain> group : groups.values()) {
+            group.sort(Comparator.<Chain>comparingInt(Chain::unresolvedHops)
+                    .thenComparingInt(c -> c.hops().size())
+                    .thenComparingInt(c -> -ConfidenceScorer.evidenceScore(c))
+                    .thenComparing(Chain::key));
+            Set<String> keptFamilies = new LinkedHashSet<>();
+            boolean cap = false;
+            for (Chain chain : group) {
+                String family = entryFamily(chain.entryClass());
+                if (keptFamilies.contains(family) || cap) {
+                    bb.calibrateChain(chain.key(), "mechanism-duplicate");
+                    dedup++;
+                } else if (keptFamilies.size() >= MAX_FAMILIES) {
+                    cap = true;
+                    bb.calibrateChain(chain.key(), "mechanism-duplicate");
+                    dedup++;
+                } else {
+                    keptFamilies.add(family);
+                }
+            }
+        }
+        JustLogger.info("链剪枝：无触发拒绝 {}，机制去重 {}（共 {} 条）", noTrigger, dedup, bb.chains().size());
     }
 
-    /**
-     * 入口方法是否存在下游集内调用者。入边为空时并入祖先类型（传递接口/父类链）上
-     * 同名方法的调用点——接口/根类声明的虚调用因 CHA 超上限未物化到实现类入边
-     * （如 Object.hashCode 的调用点不会连到 Dog.hashCode），与 KS2 反向分发同款。
-     */
+    // ---- 触发上下文（原 KS10） ----
+
     private boolean hasReachableTrigger(Chain chain, Set<String> downstream) {
+        var support = bb.originSupport();
         for (Node m : bb.graph().nodesOfType(NodeType.METHOD)) {
             if (!m.strProp("owner").equals(chain.entryClass())
                     || !m.strProp("name").equals(chain.entryMethod())) {
@@ -97,10 +127,9 @@ public final class TriggerContextKnowledgeSource implements KnowledgeSource {
             collectCallSites(m, callSites);
             if (callSites.isEmpty()) {
                 for (String ancestor : ancestors(chain.entryClass())) {
-                    Node ancestorNode = bb.graph().findMethodNode(ancestor,
-                            chain.entryMethod(), m.strProp("desc"));
-                    if (ancestorNode != null) {
-                        collectCallSites(ancestorNode, callSites);
+                    Node anc = bb.graph().findMethodNode(ancestor, chain.entryMethod(), m.strProp("desc"));
+                    if (anc != null) {
+                        collectCallSites(anc, callSites);
                     }
                 }
             }
@@ -124,12 +153,11 @@ public final class TriggerContextKnowledgeSource implements KnowledgeSource {
         }
     }
 
-    /** 祖先类型集合：传递接口 + 父类链（不含自身）。 */
     private Set<String> ancestors(String owner) {
         Set<String> result = new HashSet<>();
         Set<String> visited = new HashSet<>();
         Deque<String> queue = new ArrayDeque<>();
-        ClassInfo ci = bb.hierarchy().classInfo(owner);
+        var ci = bb.hierarchy().classInfo(owner);
         if (ci != null) {
             if (ci.superName() != null) {
                 queue.add(ci.superName());
@@ -142,7 +170,7 @@ public final class TriggerContextKnowledgeSource implements KnowledgeSource {
                 continue;
             }
             result.add(cur);
-            ClassInfo c = bb.hierarchy().classInfo(cur);
+            var c = bb.hierarchy().classInfo(cur);
             if (c == null) {
                 continue;
             }
@@ -154,17 +182,14 @@ public final class TriggerContextKnowledgeSource implements KnowledgeSource {
         return result;
     }
 
-    /**
-     * 入口/OIS 宿主下游集：从 magic entry 方法与 OIS 读宿主沿调用边 + 字段中介边
-     * （下游方法写入字段的读者可经字段流获得污点）BFS，与 KS2 剪枝集同构。
-     */
     private Set<String> entryDownstream() {
         var support = bb.originSupport();
         Map<String, List<Node>> callsByMethod = new HashMap<>();
         Map<String, List<String>> fieldsWrittenBy = new HashMap<>();
         Map<String, List<String>> fieldReaders = new HashMap<>();
         for (Node call : bb.graph().nodesOfType(NodeType.CALL)) {
-            callsByMethod.computeIfAbsent(io.just.sast.analysis.taint.OriginSupport.methodKey(call),
+            callsByMethod.computeIfAbsent(
+                    io.just.sast.analysis.taint.OriginSupport.methodKey(call),
                     k -> new ArrayList<>(1)).add(call);
         }
         for (Node m : bb.graph().nodesOfType(NodeType.METHOD)) {
@@ -226,9 +251,9 @@ public final class TriggerContextKnowledgeSource implements KnowledgeSource {
                 for (String fieldKey : written) {
                     for (String reader : fieldReaders.getOrDefault(fieldKey, List.of())) {
                         if (downstream.add(reader)) {
-                            Node readerNode = methodNodeOf(reader);
-                            if (readerNode != null) {
-                                work.add(readerNode);
+                            Node rn = methodNodeOf(reader);
+                            if (rn != null) {
+                                work.add(rn);
                             }
                         }
                     }
@@ -246,5 +271,31 @@ public final class TriggerContextKnowledgeSource implements KnowledgeSource {
         }
         return bb.graph().findMethodNode(key.substring(0, sep),
                 key.substring(sep + 1, paren), key.substring(paren));
+    }
+
+    // ---- 机制去重（原 KS11） ----
+
+    private static String mechanismKey(Chain chain) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(chain.sinkClass()).append('.').append(chain.sinkMethod())
+                .append('|').append(chain.category()).append('|');
+        List<ChainHop> hops = chain.hops();
+        for (int i = 1; i < hops.size(); i++) {
+            ChainHop hop = hops.get(i);
+            if (hop.kind() == HopKind.ENTRY) {
+                continue;
+            }
+            sb.append(hop.toOwner()).append('.').append(hop.toName()).append('.')
+                    .append(hop.field() != null ? hop.field() : "").append(';');
+        }
+        return sb.toString();
+    }
+
+    private static String entryFamily(String entryClass) {
+        String[] parts = entryClass.split("/");
+        if (parts.length >= 2) {
+            return parts[0] + "." + parts[1];
+        }
+        return entryClass;
     }
 }

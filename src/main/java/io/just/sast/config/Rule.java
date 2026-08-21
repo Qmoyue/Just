@@ -1,6 +1,7 @@
 package io.just.sast.config;
 
 import java.util.List;
+import java.util.Map;
 
 /** 规则模型：sink（起点）与 magic-entry（终点）。 */
 public sealed interface Rule {
@@ -50,4 +51,16 @@ public sealed interface Rule {
      */
     record MagicEntryRule(String id, String entryKind, MethodMatcher method, String implementsType)
             implements Rule {}
+
+    /**
+     * source 规则：替代反序列化框架入口调用点（Kryo/SnakeYAML/XStream/Hessian/Fastjson 等）。
+     * bridge = serialize（toString→getter 反射）或 deserialize（load→构造器/setter 反射）。
+     */
+    record SourceRule(String id, String bridge, CallMatcher call) implements Rule {}
+
+    /**
+     * model 规则（tabby actions 模式）：声明式方法摘要——无字节码体的外部/JDK 方法的污点传播。
+     * targets: 污点到达位置 → 来源位置集合。如 {return: [arg0]} 表示 arg0 的污点传播到返回值。
+     */
+    record ModelRule(String id, CallMatcher call, Map<String, List<String>> actions) implements Rule {}
 }

@@ -1,4 +1,4 @@
-package io.just.sast.knowledge.ks6;
+package io.just.sast.knowledge.ois;
 
 import io.just.sast.analysis.taint.ForwardOrigins;
 import io.just.sast.analysis.taint.OriginSupport;

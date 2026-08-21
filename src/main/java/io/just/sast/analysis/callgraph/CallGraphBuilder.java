@@ -6,7 +6,9 @@ import io.just.sast.cpg.graph.Graph;
 import io.just.sast.cpg.graph.Node;
 import io.just.sast.cpg.graph.NodeType;
 import io.just.sast.model.HandleRef;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import io.just.sast.model.InvokeDynamicRef;
 import io.just.sast.util.JustLogger;
 
@@ -15,7 +17,8 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * CHA 调用图构建：静态/特殊调用定目标；虚调用/接口调用按子类型分发；
+ * CHA 调用图构建：静态/特殊调用定目标（SPECIAL 边用 resolveMethod 后的真实声明类）；
+ * 虚调用/接口调用按**传递子类型闭包**分发（深继承链中的覆写方法同样获得边）；
  * invokedynamic 解析 LambdaMetafactory → lambda 实现方法。
  * 反射与动态代理边不在此处盲加（噪音大），由 KS2 按需解析。
  */
@@ -41,8 +44,12 @@ public final class CallGraphBuilder {
             String desc = call.strProp("desc");
             switch (kind) {
                 case "STATIC", "SPECIAL" -> {
-                    String target = hierarchy.resolveMethod(owner, name, desc);
-                    graph.addEdge(call, graph.methodNode(owner, name, desc, target == null), EdgeType.INVOKES, kind);
+                    String resolved = hierarchy.resolveMethod(owner, name, desc);
+                    // SPECIAL 边（super 调用）：用 resolveMethod 后的真实声明类，
+                    // 避免幽灵节点（如 super.toString() 解析到 AbstractCollection 而非字节码里的 AbstractList）
+                    String edgeOwner = resolved != null ? resolved : owner;
+                    graph.addEdge(call, graph.methodNode(edgeOwner, name, desc, resolved == null),
+                            EdgeType.INVOKES, kind);
                     edgeCount++;
                 }
                 case "VIRTUAL" -> edgeCount += addVirtual(graph, call, owner, name, desc);
@@ -56,7 +63,8 @@ public final class CallGraphBuilder {
 
     private int addVirtual(Graph graph, Node call, String owner, String name, String desc) {
         String declared = hierarchy.resolveMethod(owner, name, desc);
-        List<String> subtypes = new ArrayList<>(hierarchy.loadedSubtypes(owner));
+        // 传递子类型闭包（直接子类 + 所有孙类）：深继承链中的覆写方法同样获得分发边
+        List<String> subtypes = transitiveSubtypes(owner);
         if (declared == null && subtypes.isEmpty()) {
             graph.addEdge(call, graph.methodNode(owner, name, desc, true), EdgeType.INVOKES, "VIRTUAL");
             return 1;
@@ -130,5 +138,24 @@ public final class CallGraphBuilder {
             }
         }
         return 0;
+    }
+
+    /** 传递子类型闭包：BFS 穿过子类链（如 JsonSerializer → StdSerializer → BeanSerializerBase → BeanSerializer）。 */
+    private List<String> transitiveSubtypes(String owner) {
+        Set<String> result = new LinkedHashSet<>();
+        Set<String> visited = new java.util.HashSet<>();
+        Deque<String> work = new ArrayDeque<>();
+        work.add(owner);
+        while (!work.isEmpty()) {
+            String cur = work.poll();
+            if (!visited.add(cur)) {
+                continue;
+            }
+            for (String sub : hierarchy.loadedSubtypes(cur)) {
+                result.add(sub);
+                work.add(sub);
+            }
+        }
+        return new ArrayList<>(result);
     }
 }

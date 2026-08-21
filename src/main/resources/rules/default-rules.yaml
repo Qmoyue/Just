@@ -208,6 +208,306 @@ rules:
       call: { owner: "java/beans/XMLDecoder", name: "readObject" }
     tainted: [{receiver: true}]
 
+  # ---- 以下 sink 从 tabby/GadgetInspector/CodeQL 公开清单移植 ----
+  - id: JUST-SINK-PROCESSBUILDER-CTOR
+    kind: sink
+    category: COMMAND_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/ProcessBuilder", name: "<init>" }
+    tainted: [{arg: 0}]
+  # 来源：GI isSink（构造器副作用）——补我们只有 start+receiver 的缺口
+
+  - id: JUST-SINK-CC-TRANSFORMER
+    kind: sink
+    category: REFLECTIVE_INVOKE
+    severity: HIGH
+    match:
+      call: { owner: "org/apache/commons/collections/Transformer", name: "transform" }
+    tainted: [{receiver: true}]
+  # 来源：su18"sink 前置"——CC 链终点直接 sink 化，砍掉冗长中间链
+
+  - id: JUST-SINK-SQL-EXECUTE
+    kind: sink
+    category: SQLI
+    severity: HIGH
+    match:
+      call: { owner: "java/sql/Statement", name: ~"execute|executeQuery|executeUpdate|executeBatch" }
+    tainted: [{arg: 0}]
+  # 来源：tabby SQLI 规则
+
+  - id: JUST-SINK-SQL-PREPARE
+    kind: sink
+    category: SQLI
+    severity: HIGH
+    match:
+      call: { owner: "java/sql/Connection", name: ~"prepareStatement|prepareCall" }
+    tainted: [{arg: 0}]
+  # 来源：tabby SQLI 规则
+
+  - id: JUST-SINK-URL-OPEN
+    kind: sink
+    category: SSRF
+    severity: HIGH
+    match:
+      call: { owner: "java/net/URL", name: ~"openConnection|openStream" }
+    tainted: [{receiver: true}]
+  # 来源：GI isSink + tabby SSRF 规则
+
+  - id: JUST-SINK-FILE-OUTPUT
+    kind: sink
+    category: FILE_WRITE
+    severity: MEDIUM
+    match:
+      call: { owner: "java/io/FileOutputStream", name: "<init>" }
+    tainted: [{arg: 0}]
+  # 来源：GI isSink
+
+  - id: JUST-SINK-FILES-NEWOUTPUT
+    kind: sink
+    category: FILE_WRITE
+    severity: MEDIUM
+    match:
+      call: { owner: "java/nio/file/Files", name: "newOutputStream" }
+    tainted: [{arg: 0}]
+  # 来源：GI isSink
+
+  - id: JUST-SINK-FREEMARKER
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "freemarker/template/Template", name: "process" }
+    tainted: [{arg: 0}]
+  # 来源：社区 gadget 常用（模板注入）
+
+  - id: JUST-SINK-VELOCITY
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "org/apache/velocity/app/Velocity", name: "evaluate" }
+    tainted: [{arg: 1}]
+  # 来源：社区 gadget 常用（模板注入）
+
+  # ---- source 入口（替代反序列化框架：Kryo/SnakeYAML/XStream/Hessian/Fastjson 等） ----
+  # bridge = deserialize：入口→框架管线→构造器/setter 反射（KS14 语义）
+  # bridge = serialize：入口→框架管线→getter 反射（KS12 语义）
+  - id: JUST-SOURCE-KRYO
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/esotericsoftware/kryo/Kryo", name: ~"readClassAndObject|readObject|readObjectOrNull" }
+
+  - id: JUST-SOURCE-SNAKEYAML
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "org/yaml/snakeyaml/Yaml", name: ~"load|loadAs|loadOfType" }
+
+  - id: JUST-SOURCE-XSTREAM
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/thoughtworks/xstream/XStream", name: "fromXML" }
+
+  - id: JUST-SOURCE-HESSIAN
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/caucho/hessian/io/Hessian2Input", name: "readObject" }
+
+  - id: JUST-SOURCE-FASTJSON1
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/alibaba/fastjson/JSON", name: ~"parseObject|parse|parseArray" }
+
+  - id: JUST-SOURCE-FASTJSON2
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/alibaba/fastjson2/JSON", name: ~"parseObject|parse|parseArray" }
+
+  - id: JUST-SERIALIZE-JACKSON-MAPPER
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "com/fasterxml/jackson/databind/ObjectMapper", name: ~"writeValueAsString|writeValueAsBytes|writeValue" }
+
+  - id: JUST-SERIALIZE-JACKSON-WRITER
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "com/fasterxml/jackson/databind/ObjectWriter", name: ~"writeValueAsString|writeValueAsBytes|writeValue" }
+
+  - id: JUST-SERIALIZE-JACKSON-NODE
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "com/fasterxml/jackson/databind/node/InternalNodeMapper", name: ~"nodeToString|nodeToPrettyString" }
+
+  - id: JUST-SERIALIZE-FASTJSON2-JSON
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "com/alibaba/fastjson2/JSON", name: ~"toJSONString|toJSONBytes|writeTo" }
+
+  - id: JUST-SERIALIZE-FASTJSON2-OBJ
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "com/alibaba/fastjson2/JSONObject", name: ~"toString|toJSONString" }
+
+  - id: JUST-SERIALIZE-FASTJSON2-ARR
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "com/alibaba/fastjson2/JSONArray", name: ~"toString|toJSONString" }
+
+  - id: JUST-SERIALIZE-GSON
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "com/google/gson/Gson", name: "toJson" }
+
+  - id: JUST-SERIALIZE-XSTREAM
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "com/thoughtworks/xstream/XStream", name: "toXML" }
+
+  - id: JUST-SERIALIZE-SNAKEYAML
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "org/yaml/snakeyaml/Yaml", name: ~"dump|dumpAs" }
+
+  - id: JUST-SERIALIZE-HUTOOL
+    kind: source
+    bridge: serialize
+    match:
+      call: { owner: "cn/hutool/json/JSONUtil", name: "toJsonStr" }
+
+  # ---- 以下 source 从 CodeQL 16 框架清单移植（deserialize 侧） ----
+  - id: JUST-SOURCE-GSON-FROMJSON
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/google/gson/Gson", name: ~"fromJson" }
+
+  - id: JUST-SOURCE-JACKSON-READVALUE
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/fasterxml/jackson/databind/ObjectMapper", name: ~"readValue|readTree|readValueAsTree" }
+
+  - id: JUST-SOURCE-JACKSON-READER
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/fasterxml/jackson/databind/ObjectReader", name: ~"readValue|readTree" }
+
+  - id: JUST-SOURCE-JSONIO
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "com/json/io/JsonIoReader", name: "read" }
+  # 来源：CodeQL JsonIo 模块
+
+  - id: JUST-SOURCE-YAMLBEANS
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "org/yamlbeans/YamlReader", name: "read" }
+  # 来源：CodeQL YamlBeans 模块
+
+  - id: JUST-SOURCE-JMS-OBJMSG
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "javax/jms/ObjectMessage", name: "getObject" }
+  # 来源：CodeQL JMS ObjectMessage 模块
+
+  - id: JUST-SOURCE-FLEXJSON
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "flexjson/JSONDeserializer", name: "deserialize" }
+  # 来源：CodeQL Flexjson 模块
+
+  - id: JUST-SOURCE-JODD
+    kind: source
+    bridge: deserialize
+    match:
+      call: { owner: "jodd/json/JsonParser", name: "parse" }
+  # 来源：CodeQL Jodd Json 模块
+
+  # ---- model 规则（tabby actions 模式）：JDK 集合/字符串的声明式污点透传 ----
+  - id: MODEL-MAP-PUT
+    kind: model
+    match:
+      call: { owner: "java/util/Map", name: "put" }
+    actions: { this: [arg1] }
+  # value 的污点传播到整个 Map（tabby: this<m> ← param-1）
+
+  - id: MODEL-MAP-GET
+    kind: model
+    match:
+      call: { owner: "java/util/Map", name: "get" }
+    actions: { return: [this] }
+  # 污染 Map 的 get 结果可控（tabby: return ← this）
+
+  - id: MODEL-LIST-ADD
+    kind: model
+    match:
+      call: { owner: "java/util/List", name: "add" }
+    actions: { this: [arg0] }
+
+  - id: MODEL-LIST-GET
+    kind: model
+    match:
+      call: { owner: "java/util/List", name: "get" }
+    actions: { return: [this] }
+
+  - id: MODEL-SET-ADD
+    kind: model
+    match:
+      call: { owner: "java/util/Set", name: "add" }
+    actions: { this: [arg0] }
+
+  - id: MODEL-STRING-VALUEOF
+    kind: model
+    match:
+      call: { owner: "java/lang/String", name: "valueOf" }
+    actions: { return: [arg0] }
+  # String.valueOf(obj) 的返回值继承 obj 的污点
+
+  - id: MODEL-STRING-CONCAT
+    kind: model
+    match:
+      call: { owner: "java/lang/String", name: "concat" }
+    actions: { return: [this, arg0] }
+
+  - id: MODEL-STRINGBUILDER-APPEND
+    kind: model
+    match:
+      call: { owner: "java/lang/StringBuilder", name: "append" }
+    actions: { return: [this, arg0] }
+
+  - id: MODEL-COLLECTION-ADDALL
+    kind: model
+    match:
+      call: { owner: "java/util/Collection", name: "addAll" }
+    actions: { this: [arg0] }
+
+  - id: MODEL-COLLECTION-TOSTRING
+    kind: model
+    match:
+      call: { owner: "java/util/AbstractCollection", name: "toString" }
+    actions: { return: [this] }
+  # 污染集合的 toString 结果可控（触发 hashCode/toString gadget 的关键桥接）
+
   # ---- magic-entry 终点 ----
   - id: JUST-ENTRY-READOBJECT
     kind: magic-entry

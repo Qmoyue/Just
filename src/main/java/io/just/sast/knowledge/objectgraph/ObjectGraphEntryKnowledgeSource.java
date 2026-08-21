@@ -1,4 +1,4 @@
-package io.just.sast.knowledge.ks7;
+package io.just.sast.knowledge.objectgraph;
 
 import io.just.sast.blackboard.Blackboard;
 import io.just.sast.blackboard.Chain;

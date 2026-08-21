@@ -10,6 +10,9 @@ import io.just.sast.config.RuleSet;
 import io.just.sast.config.YamlRuleLoader;
 import io.just.sast.cpg.build.BuiltCpg;
 import io.just.sast.cpg.build.CpgBuilder;
+import io.just.sast.cpg.graph.Node;
+import io.just.sast.cpg.graph.NodeType;
+import io.just.sast.config.RuleEngine;
 import io.just.sast.frontend.asm.BytecodeFrontend;
 import io.just.sast.frontend.asm.JrtClassSource;
 import io.just.sast.frontend.asm.LoadResult;
@@ -112,9 +115,23 @@ public final class ScanPipeline {
         reporter.write(output, blackboard.chains(), blackboard.sinkOutcomes(), blackboard.chainCalibrations());
         JustLogger.info("CSV 已输出到 {}", output.toAbsolutePath());
 
+        // KS1 已删除：sink/entry 统计从图直接产出（规则命中即计数）
+        int sinkCount = 0;
+        for (Node call : cpg.graph().nodesOfType(NodeType.CALL)) {
+            if (RuleEngine.matchingSink(ruleSet, hierarchy, call).isPresent()) {
+                sinkCount++;
+            }
+        }
+        int entryCount = 0;
+        for (Node method : cpg.graph().nodesOfType(NodeType.METHOD)) {
+            if (RuleEngine.matchingEntry(ruleSet, hierarchy, method.strProp("owner"),
+                    method.strProp("name"), method.strProp("desc")).isPresent()) {
+                entryCount++;
+            }
+        }
         ScanStatistics scanStats = new ScanStatistics(
                 load.filesScanned(), load.classCount(), load.diagnosticCount(),
-                blackboard.sinkCount(), blackboard.entryCount(), blackboard.chains().size(),
+                sinkCount, entryCount, blackboard.chains().size(),
                 System.currentTimeMillis() - start,
                 (Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()) / 1024 / 1024);
         if (stats) {

@@ -1,105 +1,82 @@
 # Just
 
-轻量字节码 SAST：挖掘 Java 原生反序列化（ObjectInputStream）gadget 利用链。
-简单易用：一条命令深度扫描（默认含 JDK 运行库全量分析），CSV 输出。
+轻量字节码 SAST：挖掘 Java 反序列化 gadget 利用链。
+覆盖原生 OIS + Kryo/SnakeYAML/XStream/Hessian/Fastjson/Gson/Jackson 等替代框架。
+一条命令深度扫描，CSV 输出，`--jdk-home` 支持目标 JDK 精确匹配。
 
-## 架构
-
-```text
-JAR/WAR → ASM 前端（fat jar 嵌套解析 + JDK 运行库[可选指定目标版本]）
-  → 字节码事实模型 → CPG（内存图 + 惰性 CFG/def-use + CHA 调用图）
-  → 黑板（串行三阶段调度，插件式扩展，ServiceLoader 注册）
-      ANALYSIS:     KS1 模式匹配 | KS2 反向污点 | KS4/5 前向对象污点
-                    KS6 OIS 回调 | KS12 序列化框架桥接
-      COMPOSITION:  KS7 对象图入口扩散
-      CALIBRATION:  KS3 可行性 | KS8 类型流 | KS9 序列化可行性
-                    KS10 触发上下文 | KS11 机制去重
-  → 链提取 + 置信度排序（高可用链置顶）→ CSV（findings/edges/sinks）
-```
-
-## 使用
+## 快速开始
 
 ```bash
 mvn package -DskipTests
-java -jar target/just-sast-0.1.0.jar scan --jar target.jar
-```
-
-### 基本扫描
-
-```bash
-# 默认：用运行时 JDK 的核心库做深度分析
-java -jar target/just-sast-0.1.0.jar scan --jar app.jar
-
-# Spring Boot fat jar（自动递归解析 BOOT-INF/lib 嵌套 jar）
 java -jar target/just-sast-0.1.0.jar scan --jar app.jar --stats
-
-# WAR（自动解析 WEB-INF/classes + WEB-INF/lib）
-java -jar target/just-sast-0.1.0.jar scan --jar app.war
 ```
 
-### 指定目标 JDK 版本（推荐）
+## 架构
 
-当目标 jar 编译版本与运行时 JDK 不一致时（如 Java 8 目标跑在 JDK 17 上），
-用 `--jdk-home` 指定目标 JDK 路径，工具将使用该版本的核心库替代运行时 JDK：
-
-```bash
-# Java 8 目标：指定 JDK 8 主目录（读 jre/lib/rt.jar + 辅助 jar）
-java -jar target/just-sast-0.1.0.jar scan --jar app.jar \
-  --jdk-home /path/to/jdk8
-
-# Java 7 目标：指定 JDK 7 主目录
-java -jar target/just-sast-0.1.0.jar scan --jar app.jar \
-  --jdk-home /path/to/jdk7
-
-# 也可直接传 JRE 目录（读 lib/rt.jar）
-java -jar target/just-sast-0.1.0.jar scan --jar app.jar \
-  --jdk-home /path/to/jre8
-
-# Java 9+ 目标（走 jrt-fs 挂载外部模块系统）
-java -jar target/just-sast-0.1.0.jar scan --jar app.jar \
-  --jdk-home /path/to/jdk11
+```
+JAR/WAR → ASM 前端（fat jar/WAR 嵌套 + JDK[--jdk-home 可选指定版本]）
+  → CPG（传递子类型分发 + 惰性 CFG + CHA 调用图）
+  → 黑板三阶段调度（10 个知识源）
+      ANALYSIS:     反向污点 | 前向对象污点 | OIS 回调 | 规则驱动框架桥接
+      COMPOSITION:  对象图入口扩散 | 语义链组装
+      CALIBRATION:  链校验 | 链剪枝 | SafeConfig | 已知模式识别
+  → 置信度排序 → CSV 三表
 ```
 
-> 不指定 `--jdk-home` 时，默认用运行时 JVM 的 JDK 核心库。工具会自动检测
-> 目标 jar 的 class 文件版本（major version），报告并在版本不匹配时打 WARN。
-
-### 全部参数
+## 参数
 
 | 参数 | 说明 |
 |---|---|
-| `--jar <jar\|war\|dir>` | 目标 JAR/WAR 或 class 目录（必填） |
+| `--jar <jar\|war\|dir>` | 目标（必填，支持 fat jar / WAR / class 目录） |
 | `--deps <a,b,...>` | 附加依赖（逗号分隔） |
-| `--jdk-home <dir>` | 目标 JDK/JRE 主目录（不指定则用运行时 JDK） |
-| `--output <dir>` | CSV 输出目录（默认 `just-out`） |
-| `--rules <file>` | 自定义规则 YAML（默认内置） |
-| `--fast` | 快速模式：不加载 JDK 运行库全量（链可能不完整） |
+| `--jdk-home <dir>` | 目标 JDK/JRE 主目录（精确匹配 rt.jar / jrt-fs） |
+| `--output <dir>` | CSV 输出（默认 `just-out`） |
+| `--rules <file>` | 自定义规则 YAML |
+| `--fast` | 快速模式（不加载 JDK 全量） |
 | `--stats` | 扫描统计与逐规则过滤率 |
 
-### 输出
+## 知识源（10 个引擎）
 
-- `findings.csv`：候选 gadget 链（按置信度降序，含路径与变体计数）
-- `edges.csv`：链每跳明细（调用/字段流转证据）
-- `sinks.csv`：每个 sink 的 KS2 裁决（对 KS1 标记的校准记录）
+| KS | 包 | 阶段 | 职责 |
+|---|---|---|---|
+| BackwardTaint | `backward` | ANALYSIS | 反向污点：sink→可控性回溯（双向剪枝+接口反向分发） |
+| ForwardTaint | `engine` | ANALYSIS | 前向对象污点（粗扫+精扫，GadgetInspector 式） |
+| OisCallback | `ois` | ANALYSIS | OIS 机制回调（resolveClass/resolveProxyClass 重写建模） |
+| FrameworkBridge | `framework` | ANALYSIS | 规则驱动框架桥接（Kryo/SnakeYAML/jackson 等→反射 sink） |
+| ObjectGraph | `objectgraph` | COMPOSITION | 对象图入口扩散（字段类型回调重根） |
+| ChainComposer | `compose` | COMPOSITION | 语义链组装（INVOKE/TRIGGER/TEMPLATE 桥接多级链） |
+| ChainValidator | `calibrate` | CALIBRATION | 链校验：PASM 可行性 + 类型流 + 序列化可行性 |
+| ChainPruner | `calibrate` | CALIBRATION | 链剪枝：触发上下文 + 机制去重（入口家族） |
+| SafeConfig | `calibrate` | CALIBRATION | 安全配置抑制（XStream 白名单/Kryo 注册要求等→不产链） |
+| GadgetPattern | `calibrate` | CALIBRATION | 已知 gadget 模式识别（CC1-7/Spring/Rome/CB/Jdk7u21） |
 
-## 知识源
+## 规则系统（4 种类型，改 YAML 零代码）
 
-| KS | 阶段 | 职责 |
-|---|---|---|
-| KS1 | ANALYSIS | 模式匹配：YAML 规则圈定 sink 与 magic entry（含 owner 层次命中） |
-| KS2 | ANALYSIS | 反向污点：从 sink 反向回答"该值是否攻击者可控"（双向剪枝 + 接口反向分发） |
-| KS3 | CALIBRATION | 链可行性校验（字段声明/方法可解析） |
-| KS4 | ANALYSIS | 前向对象污点粗扫（GadgetInspector 式） |
-| KS5 | ANALYSIS | 前向精扫（接口展开/代理串联/反射解析） |
-| KS6 | ANALYSIS | 反序列化回调（自定义 OIS 的 resolveClass/resolveProxyClass 重写） |
-| KS7 | COMPOSITION | 对象图入口扩散（字段类型回调重根产新链） |
-| KS8 | CALIBRATION | 类型流校准（逐跳值类型相容性） |
-| KS9 | CALIBRATION | 序列化可行性（字段类型无可序列化子类闭包则拒） |
-| KS10 | CALIBRATION | 触发上下文（hashCode/toString 等入口须有反序列化可达触发者） |
-| KS11 | CALIBRATION | 机制去重（同机制尾按入口家族留代表，防笛卡尔积噪音） |
-| KS12 | ANALYSIS | 序列化框架桥接（toString/readObject → jackson/gson/fastjson → getter 反射） |
+| kind | 用途 | 数量 | 来源 |
+|---|---|---|---|
+| `sink` | 危险调用点（RCE/JNDI/SQLI/SSRF/File/模板注入） | 35+ | 自有 + tabby/GI/CodeQL |
+| `magic-entry` | OIS 反序列化入口方法 | 12 | 自有 |
+| `source` | 替代反序列化框架入口 | 24 | CodeQL 16 框架 + 自有 |
+| `model` | 声明式污点透传（tabby actions） | 10 | tabby |
+
+## 输出
+
+- **findings.csv**：候选链（按置信度降序，含路径/变体计数/证据）
+- **edges.csv**：链每跳明细（调用/字段流转/桥接证据）
+- **sinks.csv**：每个 sink 的裁决
+
+## 从开源项目学习
+
+| 来源 | 移植内容 |
+|---|---|
+| GadgetInspector | 传递子类型分发修复、前向对象污点两段式 |
+| FLASH (USENIX'25) | 包前缀剪枝（DDCA 管线特化）、触发上下文 |
+| JDD (IEEE S&P) | 语义链组装（bottom-up 组装思想）、已知模式识别 |
+| tabby | model 规则（actions 声明式摘要）、--jdk-home |
+| CodeQL | 16 框架 source 清单、SafeConfig 抑制 |
+| marshalsec | 已知 gadget 模式分类 |
 
 ## 开发
 
-规范见 `AGENTS.md`；架构 `docs/architecture.md`；需求 `docs/requirements.md`。
-新增知识源：实现 `io.just.sast.blackboard.KnowledgeSource`（声明 phase/interests）→ 写入
-`META-INF/services/io.just.sast.blackboard.KnowledgeSource` → 手动 CLI 回归。
+规范 `AGENTS.md`；架构 `docs/architecture.md`；需求 `docs/requirements.md`。
+新增知识源：实现 `KnowledgeSource`（声明 phase/interests）→ ServiceLoader 注册 → CLI 回归。
