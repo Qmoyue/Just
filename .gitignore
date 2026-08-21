@@ -6,8 +6,6 @@ just-out/
 *.class
 *.log
 dependency-reduced-pom.xml
-
-# 本地测试基准与开发记录，不进入仓库
 benchmark/
 docs/development.md
 .agents/
