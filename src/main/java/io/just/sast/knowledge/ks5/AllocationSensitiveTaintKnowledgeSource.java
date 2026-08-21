@@ -4,7 +4,7 @@ import io.just.sast.blackboard.Blackboard;
 import io.just.sast.blackboard.Event;
 import io.just.sast.blackboard.EventType;
 import io.just.sast.blackboard.KnowledgeSource;
-import io.just.sast.knowledge.ks4.ForwardEngine;
+import io.just.sast.knowledge.engine.ForwardEngine;
 
 import java.util.Set;
 

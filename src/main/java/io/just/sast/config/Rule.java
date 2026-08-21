@@ -14,6 +14,16 @@ public sealed interface Rule {
             return this.owner.matches(owner) && this.name.matches(name)
                     && (descriptor == null || descriptor.matches(desc));
         }
+
+        /** owner 为字面量时的类型名（供层次匹配：调用点 owner 为其子类型/实现类时命中）；正则返回 null。 */
+        public String ownerType() {
+            return owner.isRegex() ? null : owner.pattern();
+        }
+
+        /** name/descriptor 匹配（不含 owner），供层次命中复用。 */
+        public boolean matchesRest(String name, String desc) {
+            return this.name.matches(name) && (descriptor == null || descriptor.matches(desc));
+        }
     }
 
     /** 方法匹配（用于 magic-entry）。 */

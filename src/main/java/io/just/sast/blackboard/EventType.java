@@ -2,12 +2,12 @@ package io.just.sast.blackboard;
 
 /** 黑板事件类型（封闭集合）。 */
 public enum EventType {
-    /** 扫描启动，触发 KS1 全量标记 */
+    /** 扫描启动：ANALYSIS 阶段知识源执行 */
     SCAN_START,
-    /** KS1 标记了一个 sink */
-    SINK_MARKED,
-    /** KS1 标记了一个 magic entry */
-    MAGIC_ENTRY_MARKED,
-    /** KS2 完成一条链 */
+    /** 分析完成：COMPOSITION 阶段知识源执行 */
+    SCAN_ANALYZED,
+    /** 拼装完成：CALIBRATION 阶段知识源执行 */
+    SCAN_COMPLETE,
+    /** 新链产出（addChain 时发布，当前无内置订阅者，留作扩展点） */
     CHAIN_FOUND
 }

@@ -1,6 +1,7 @@
 package io.just.sast.analysis.hierarchy;
 
 import io.just.sast.model.ClassInfo;
+import io.just.sast.model.JdkClassSource;
 import io.just.sast.model.MethodInfo;
 
 import java.util.ArrayDeque;
@@ -23,7 +24,9 @@ public final class ClassHierarchy {
     private final Map<String, List<String>> directSubtypes = new HashMap<>();
     private final Map<String, Boolean> subtypeCache = new HashMap<>();
     private final Map<String, String> resolveCache = new HashMap<>();
-    private final Map<String, List<String>> implementersCache = new HashMap<>();
+    /** implementers 缓存键：接口 + 上限（不同上限结果不同；null 表示该上限下放弃枚举）。 */
+    private record IfaceKey(String interfaceName, int cap) {}
+    private final Map<IfaceKey, List<String>> implementersCache = new HashMap<>();
 
     public ClassHierarchy(Map<String, ClassInfo> initial, JdkClassSource jdk) {
         this.classes = new HashMap<>(initial);
@@ -50,6 +53,10 @@ public final class ClassHierarchy {
             if (c != null) {
                 classes.put(internalName, c);
                 indexSubtypes(c);
+                // 新类入图改变了子类型关系，相关缓存失效
+                subtypeCache.clear();
+                resolveCache.clear();
+                implementersCache.clear();
             }
         }
         return c;
@@ -178,7 +185,7 @@ public final class ClassHierarchy {
         return null;
     }
 
-    /** 字段解析：沿父类链找字段声明类；未找到返回 null。 */
+    /** 字段解析：沿父类链找字段声明类；未找到返回 null（父类不可解析时同样返回 null，由调用方保守处理）。 */
     public String resolveField(String owner, String name) {
         String current = owner;
         Set<String> visited = new HashSet<>();
@@ -195,12 +202,27 @@ public final class ClassHierarchy {
         return null;
     }
 
+    /** 父类链是否全部可解析（供校准只在可证明时拒绝）。 */
+    public boolean superclassChainResolvable(String owner) {
+        String current = owner;
+        Set<String> visited = new HashSet<>();
+        while (current != null && visited.add(current)) {
+            ClassInfo cls = classInfo(current);
+            if (cls == null) {
+                return false;
+            }
+            current = cls.superName();
+        }
+        return true;
+    }
+
     /**
-     * 接口实现类（传递，非接口类），超上限返回 null 表示放弃枚举。带缓存。
+     * 接口实现类（传递，非接口类），超上限返回 null 表示放弃枚举。按 (接口, 上限) 缓存。
      */
     public List<String> implementers(String interfaceName, int cap) {
-        if (implementersCache.containsKey(interfaceName)) {
-            return implementersCache.get(interfaceName);
+        IfaceKey key = new IfaceKey(interfaceName, cap);
+        if (implementersCache.containsKey(key)) {
+            return implementersCache.get(key);
         }
         List<String> result = new ArrayList<>();
         Deque<String> queue = new ArrayDeque<>();
@@ -222,14 +244,14 @@ public final class ClassHierarchy {
                 } else {
                     result.add(sub);
                     if (result.size() > cap) {
-                        implementersCache.put(interfaceName, null);
+                        implementersCache.put(key, null);
                         return null;
                     }
                 }
             }
         }
         List<String> cached = List.copyOf(result);
-        implementersCache.put(interfaceName, cached);
+        implementersCache.put(key, cached);
         return cached;
     }
 }

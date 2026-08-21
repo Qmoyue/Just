@@ -1,6 +1,7 @@
 package io.just.sast.blackboard;
 
 import io.just.sast.analysis.hierarchy.ClassHierarchy;
+import io.just.sast.analysis.taint.OriginSupport;
 import io.just.sast.config.RuleSet;
 import io.just.sast.cpg.build.FieldWriterIndex;
 import io.just.sast.cpg.graph.Graph;
@@ -30,6 +31,8 @@ public final class Blackboard {
     private final FieldWriterIndex fieldWriters;
     private final RuleSet rules;
     private final int maxDepth;
+    /** 共享分析支撑：调用点索引 + 方法解析缓存 + origin 分析缓存（KS2/KS4/KS5 复用同一份）。 */
+    private final OriginSupport originSupport;
 
     private final Map<Long, SinkMark> sinkMarks = new HashMap<>();
     private final Map<Long, MagicEntryMark> entryMarks = new HashMap<>();
@@ -47,6 +50,7 @@ public final class Blackboard {
         this.fieldWriters = fieldWriters;
         this.rules = rules;
         this.maxDepth = maxDepth;
+        this.originSupport = new OriginSupport(graph, hierarchy);
     }
 
     public Graph graph() {
@@ -69,16 +73,18 @@ public final class Blackboard {
         return maxDepth;
     }
 
+    public OriginSupport originSupport() {
+        return originSupport;
+    }
+
     // ---- 标记（KS1 写） ----
 
     public void markSink(long callNodeId, SinkMark mark) {
         sinkMarks.put(callNodeId, mark);
-        publish(Event.of(EventType.SINK_MARKED, callNodeId, mark));
     }
 
     public void markMagicEntry(long methodNodeId, MagicEntryMark mark) {
         entryMarks.put(methodNodeId, mark);
-        publish(Event.of(EventType.MAGIC_ENTRY_MARKED, methodNodeId, mark));
     }
 
     public SinkMark sinkOf(long callNodeId) {
@@ -183,6 +189,12 @@ public final class Blackboard {
     boolean hasEvents() {
         synchronized (queue) {
             return !queue.isEmpty();
+        }
+    }
+
+    void clearEvents() {
+        synchronized (queue) {
+            queue.clear();
         }
     }
 }

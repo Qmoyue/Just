@@ -7,6 +7,13 @@ public record Match(String pattern) {
 
     public Match {
         pattern = pattern.strip();
+        // YAML 中 ~"a|b" 的引号会进入标量，剥掉以防备选被引号拆散（"a / b"）
+        if (pattern.startsWith("~")) {
+            String rest = pattern.substring(1).strip();
+            if (rest.length() >= 2 && rest.startsWith("\"") && rest.endsWith("\"")) {
+                pattern = "~" + rest.substring(1, rest.length() - 1);
+            }
+        }
     }
 
     public static Match of(String raw) {

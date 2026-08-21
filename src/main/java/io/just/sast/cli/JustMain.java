@@ -15,7 +15,8 @@ public final class JustMain implements Runnable {
 
     @Override
     public void run() {
-        spec.commandLine().usage(System.err);
+        // 无子命令：用法错误（退出码 2）
+        throw new CommandLine.ParameterException(spec.commandLine(), "缺少子命令，用法见 --help");
     }
 
     public static void main(String[] args) {

@@ -136,6 +136,78 @@ rules:
       call: { owner: "org/springframework/util/SerializationUtils", name: "deserialize" }
     tainted: [{arg: 0}]
 
+  - id: JUST-SINK-JMX-INVOKE
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "javax/management/MBeanServer", name: "invoke" }
+    tainted: [{arg: 1}, {arg: 2}]
+
+  - id: JUST-SINK-METHODHANDLE-INVOKE
+    kind: sink
+    category: REFLECTIVE_INVOKE
+    severity: HIGH
+    match:
+      call: { owner: "java/lang/invoke/MethodHandle", name: ~"invoke.*" }
+    tainted: [{receiver: true}]
+
+  - id: JUST-SINK-SPEL-GETVALUE
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "org/springframework/expression/Expression", name: "getValue" }
+    tainted: [{receiver: true}]
+
+  - id: JUST-SINK-GROOVY-SHELL-EVALUATE
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "groovy/lang/GroovyShell", name: "evaluate" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-GROOVY-CLASSLOADER
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "groovy/lang/GroovyClassLoader", name: ~"parseClass|defineClass" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-OGNL
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "ognl/Ognl", name: ~"getValue|parseExpression" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-MVEL-EVAL
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "org/mvel2/MVEL", name: ~"eval|evalFile" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-EL-PROCESSOR
+    kind: sink
+    category: CODE_EXEC
+    severity: HIGH
+    match:
+      call: { owner: "javax/el/ELProcessor", name: ~"eval|getValue" }
+    tainted: [{arg: 0}]
+
+  - id: JUST-SINK-XMLDECODER
+    kind: sink
+    category: DESERIALIZE
+    severity: HIGH
+    match:
+      call: { owner: "java/beans/XMLDecoder", name: "readObject" }
+    tainted: [{receiver: true}]
+
   # ---- magic-entry 终点 ----
   - id: JUST-ENTRY-READOBJECT
     kind: magic-entry
@@ -213,3 +285,10 @@ rules:
     match:
       method: { name: "readExternal", descriptor: "(Ljava/io/ObjectInput;)V" }
       class: { implements: "java/io/Externalizable" }
+
+  - id: JUST-ENTRY-VALIDATEOBJECT
+    kind: magic-entry
+    entryKind: validateObject
+    match:
+      method: { name: "validateObject", descriptor: "()V" }
+      class: { implements: "java/io/ObjectInputValidation" }

@@ -44,6 +44,35 @@ public final class Descriptor {
         return slots;
     }
 
+    /** 参数局部槽 → 参数序数（0 基，不含 this）；实例方法 slot 0（this/receiver）返回 -1；非参数槽（wide 次槽等）返回 -2。 */
+    public static int paramOrdinal(String methodDescriptor, boolean isStatic, int slot) {
+        List<Integer> slots = argSlots(methodDescriptor, isStatic);
+        int cur = 0;
+        for (int i = 0; i < slots.size(); i++) {
+            if (cur == slot) {
+                return isStatic ? i : i - 1;
+            }
+            cur += slots.get(i);
+        }
+        return -2;
+    }
+
+    /** 第 ordinal 个参数（0 基，不含 this）的类型子串（如 "Ljava/lang/String;"、"I"）；越界返回 null。 */
+    public static String paramType(String methodDescriptor, int ordinal) {
+        int open = methodDescriptor.indexOf('(');
+        int close = methodDescriptor.indexOf(')', open);
+        String args = methodDescriptor.substring(open + 1, close);
+        int i = 0;
+        for (int n = 0; i < args.length(); n++) {
+            int start = i;
+            i = next(args, i);
+            if (n == ordinal) {
+                return args.substring(start, i);
+            }
+        }
+        return null;
+    }
+
     /** 返回类型：方法描述符 ')' 之后的部分。 */
     public static String returnType(String methodDescriptor) {
         int close = methodDescriptor.indexOf(')');

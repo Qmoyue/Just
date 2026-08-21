@@ -25,7 +25,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 扫描管线编排：frontend → 层次 → CPG → 调用图 → 黑板（KS1+KS2 交叉并行）→ CSV。 */
+/** 扫描管线编排：frontend → 层次 → CPG/调用图（构建后冻结）→ 黑板（串行两阶段）→ CSV。 */
 public final class ScanPipeline {
 
     /** 反向回溯深度上限（内部固定，不暴露参数）。 */
@@ -61,22 +61,24 @@ public final class ScanPipeline {
             targets.addAll(deps);
         }
 
-        // 构建期（深度分析默认：JDK 运行库全量纳入）
+        // 构建期（深度分析默认：JDK 运行库全量纳入；JDK 源单实例复用）
         BytecodeFrontend frontend = new BytecodeFrontend();
+        JrtClassSource jdk = new JrtClassSource();
         LoadResult load = fast
                 ? frontend.load(targets)
-                : frontend.load(targets, new JrtClassSource().listAll(JrtClassSource.DESER_MODULES));
+                : frontend.load(targets, jdk.listAll(JrtClassSource.DESER_MODULES));
         JustLogger.info("解析完成：{} 个类（{} 个文件），诊断 {} 条",
                 load.classCount(), load.filesScanned(), load.diagnosticCount());
 
-        ClassHierarchy hierarchy = new ClassHierarchy(load.classes(), new JrtClassSource());
+        ClassHierarchy hierarchy = new ClassHierarchy(load.classes(), jdk);
         BuiltCpg cpg = new CpgBuilder().build(load);
         int callEdges = new CallGraphBuilder(hierarchy).build(cpg.graph());
+        cpg.graph().freeze();
         JustLogger.info("CPG 构建完成：节点 {}，边 {}，调用边 {}，字段写入 {} 组",
                 cpg.graph().nodeCount(), cpg.graph().edgeCount(), callEdges,
                 cpg.fieldWriters().fieldCount());
 
-        // 分析期（黑板循环：KS1 标记与 KS2 反向污点交叉并行，各自独立写黑板）
+        // 分析期（黑板串行两阶段：ANALYSIS → CALIBRATION）
         Blackboard blackboard = new Blackboard(cpg.graph(), hierarchy, cpg.fieldWriters(), ruleSet, MAX_DEPTH);
         new Controller(blackboard, KnowledgeSources.discover()).run();
 

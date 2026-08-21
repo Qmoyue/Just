@@ -39,7 +39,7 @@ public final class JarReader {
             return out;
         }
         String name = target.getFileName().toString();
-        if (name.endsWith(".jar") || name.endsWith(".zip")) {
+        if (name.endsWith(".jar") || name.endsWith(".zip") || name.endsWith(".war")) {
             List<ClassBytes> out = new ArrayList<>();
             readJarFile(target, out, name, 0);
             return out;

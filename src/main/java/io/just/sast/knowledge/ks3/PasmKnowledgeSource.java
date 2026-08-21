@@ -7,6 +7,7 @@ import io.just.sast.blackboard.Event;
 import io.just.sast.blackboard.EventType;
 import io.just.sast.blackboard.HopKind;
 import io.just.sast.blackboard.KnowledgeSource;
+import io.just.sast.blackboard.Phase;
 import io.just.sast.util.JustLogger;
 
 import java.util.ArrayList;
@@ -15,11 +16,11 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * KS3 PASM 链可行性验证（校准 KS2/KS4 产出的链）。
+ * KS3 PASM 链可行性验证（CALIBRATION 阶段，校准 KS2/KS4/KS5 产出的链）。
  * 局部可证校验（每跳独立可证，不做全局类型游走——链跳混合污点值与承载对象两类流，
  * 全局游走不健全）：
- * 1. FIELD_FLOW(f)：字段 f 必须声明于 fromOwner 或其父类
- * 2. 调用跳：目标方法必须在 toOwner 上可解析（声明或继承）
+ * 1. FIELD_FLOW(f)：字段 f 必须声明于 fromOwner 或其父类（父类链全部可解析时才允许拒绝）
+ * 2. 调用跳：目标方法必须在 toOwner 上可解析（声明或继承；类不可解析时保守通过）
  * 不可解析的类/方法保守通过（只拒绝可证明不可能的链）。
  */
 public final class PasmKnowledgeSource implements KnowledgeSource {
@@ -31,7 +32,12 @@ public final class PasmKnowledgeSource implements KnowledgeSource {
 
     @Override
     public Set<EventType> interests() {
-        return Set.of(EventType.SCAN_START);
+        return Set.of(EventType.SCAN_COMPLETE);
+    }
+
+    @Override
+    public Phase phase() {
+        return Phase.CALIBRATION;
     }
 
     @Override
@@ -41,7 +47,7 @@ public final class PasmKnowledgeSource implements KnowledgeSource {
 
     @Override
     public void onEvent(Blackboard bb, Event event) {
-        if (event.type() != EventType.SCAN_START) {
+        if (event.type() != EventType.SCAN_COMPLETE) {
             return;
         }
         int rejected = 0;
@@ -65,7 +71,8 @@ public final class PasmKnowledgeSource implements KnowledgeSource {
             }
             if (hop.kind() == HopKind.FIELD_FLOW) {
                 String declaring = bb.hierarchy().resolveField(hop.fromOwner(), hop.field());
-                if (declaring == null) {
+                if (declaring == null && bb.hierarchy().superclassChainResolvable(hop.fromOwner())) {
+                    // 父类链可解析且确实无此字段才拒绝；否则保守通过
                     return "field-not-declared:" + hop.fromOwner() + "." + hop.field();
                 }
                 continue;

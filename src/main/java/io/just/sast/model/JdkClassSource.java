@@ -1,4 +1,4 @@
-package io.just.sast.analysis.hierarchy;
+package io.just.sast.model;
 
 import io.just.sast.model.ClassInfo;
 

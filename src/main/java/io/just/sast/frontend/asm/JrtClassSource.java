@@ -1,6 +1,6 @@
 package io.just.sast.frontend.asm;
 
-import io.just.sast.analysis.hierarchy.JdkClassSource;
+import io.just.sast.model.JdkClassSource;
 import io.just.sast.model.ClassInfo;
 import io.just.sast.util.JustLogger;
 

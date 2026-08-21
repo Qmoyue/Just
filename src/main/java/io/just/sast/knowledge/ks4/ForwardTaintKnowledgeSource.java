@@ -4,11 +4,12 @@ import io.just.sast.blackboard.Blackboard;
 import io.just.sast.blackboard.Event;
 import io.just.sast.blackboard.EventType;
 import io.just.sast.blackboard.KnowledgeSource;
+import io.just.sast.knowledge.engine.ForwardEngine;
 
 import java.util.Set;
 
 /**
- * KS4 前向对象污点引擎（粗扫，独立知识源，与 KS1/KS2 交叉并行）。
+ * KS4 前向对象污点引擎（粗扫，独立知识源，ANALYSIS 阶段）。
  * GadgetInspector 式正向：类级事实、无接口/代理展开，速度快。
  * 精扫（接口/代理/反射补全）由 KS5 以同一引擎执行。
  */
