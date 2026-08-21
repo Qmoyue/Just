@@ -31,13 +31,17 @@ public final class ScanCommand implements Callable<Integer> {
     @Option(names = "--fast", description = "快速模式：不加载 JDK 运行库全量（链可能不完整）")
     boolean fast;
 
+    @Option(names = "--jdk-home", paramLabel = "<dir>",
+            description = "目标 JDK/JRE 主目录（不指定则用运行时 JDK；Java 8 读 jre/lib/rt.jar，Java 9+ 走 jrt-fs）")
+    Path jdkHome;
+
     @Option(names = "--stats", description = "输出扫描统计")
     boolean stats;
 
     @Override
     public Integer call() {
         try {
-            return ScanPipeline.run(target, deps, output, rules, stats, fast).exitCode();
+            return ScanPipeline.run(target, deps, output, rules, stats, fast, jdkHome).exitCode();
         } catch (ScanPipeline.UsageException e) {
             System.err.println("[just:error] " + e.getMessage());
             return ExitCode.USAGE.code();

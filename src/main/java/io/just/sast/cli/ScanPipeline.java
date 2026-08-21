@@ -13,6 +13,7 @@ import io.just.sast.cpg.build.CpgBuilder;
 import io.just.sast.frontend.asm.BytecodeFrontend;
 import io.just.sast.frontend.asm.JrtClassSource;
 import io.just.sast.frontend.asm.LoadResult;
+import io.just.sast.frontend.asm.TargetJdkSource;
 import io.just.sast.report.ConsoleSummary;
 import io.just.sast.report.CsvReporter;
 import io.just.sast.report.ScanStatistics;
@@ -44,6 +45,11 @@ public final class ScanPipeline {
 
     public static ScanResult run(Path target, List<Path> deps, Path output, Path rules,
                                  boolean stats, boolean fast) throws Exception {
+        return run(target, deps, output, rules, stats, fast, null);
+    }
+
+    public static ScanResult run(Path target, List<Path> deps, Path output, Path rules,
+                                 boolean stats, boolean fast, Path jdkHome) throws Exception {
         long start = System.currentTimeMillis();
 
         // 规则
@@ -61,24 +67,35 @@ public final class ScanPipeline {
             targets.addAll(deps);
         }
 
-        // 构建期（深度分析默认：JDK 运行库全量纳入；JDK 源单实例复用）
+        // 构建期：JDK 类来源（--jdk-home 指定目标版本，否则用运行时 jrt）
         BytecodeFrontend frontend = new BytecodeFrontend();
-        JrtClassSource jdk = new JrtClassSource();
+        io.just.sast.model.JdkClassSource jdkSource;
+        List<io.just.sast.frontend.asm.ClassBytes> jdkClasses;
+        if (jdkHome != null) {
+            TargetJdkSource targetJdk = new TargetJdkSource(jdkHome);
+            jdkSource = targetJdk;
+            jdkClasses = fast ? List.of() : targetJdk.listAll();
+            JustLogger.info("使用目标 JDK：{}（--jdk-home={}）", targetJdk.description(), jdkHome);
+        } else {
+            JrtClassSource jrt = new JrtClassSource();
+            jdkSource = jrt;
+            jdkClasses = fast ? List.of() : jrt.listAll(JrtClassSource.DESER_MODULES);
+        }
         LoadResult load = fast
                 ? frontend.load(targets)
-                : frontend.load(targets, jdk.listAll(JrtClassSource.DESER_MODULES));
+                : frontend.load(targets, jdkClasses);
         JustLogger.info("解析完成：{} 个类（{} 个文件），诊断 {} 条",
                 load.classCount(), load.filesScanned(), load.diagnosticCount());
         if (load.targetMajorVersion() > 0) {
             String targetJdk = jdkVersionOf(load.targetMajorVersion());
             String runtimeJdk = System.getProperty("java.version", "?");
             JustLogger.info("目标 JDK：{}（major={}），运行时 JDK：{}", targetJdk, load.targetMajorVersion(), runtimeJdk);
-            if (load.targetMajorVersion() < 61 && !runtimeJdk.startsWith("1.8")) {
-                JustLogger.warn("目标编译版本低于运行时 JDK——运行时库中可能含目标 JDK 不存在的方法（假阳风险）");
+            if (jdkHome == null && load.targetMajorVersion() < 61 && !runtimeJdk.startsWith("1.8")) {
+                JustLogger.warn("目标编译版本低于运行时 JDK——建议用 --jdk-home 指定目标版本（当前用运行时库，假阳风险）");
             }
         }
 
-        ClassHierarchy hierarchy = new ClassHierarchy(load.classes(), jdk);
+        ClassHierarchy hierarchy = new ClassHierarchy(load.classes(), jdkSource);
         BuiltCpg cpg = new CpgBuilder().build(load);
         int callEdges = new CallGraphBuilder(hierarchy).build(cpg.graph());
         cpg.graph().freeze();
