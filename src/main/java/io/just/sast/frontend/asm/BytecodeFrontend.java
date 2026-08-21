@@ -29,6 +29,7 @@ public final class BytecodeFrontend {
         List<ParseDiagnostic> diagnostics = new ArrayList<>();
         Map<String, ClassInfo> classes = new LinkedHashMap<>();
         int files = 0;
+        int maxMajor = 0;
         for (ClassBytes cb : extraClassBytes) {
             files++;
             try {
@@ -44,6 +45,7 @@ public final class BytecodeFrontend {
                     try {
                         ClassInfo info = classFileReader.read(cb.bytes());
                         classes.putIfAbsent(info.internalName(), info);
+                        maxMajor = Math.max(maxMajor, classFileReader.majorVersion());
                     } catch (Exception e) {
                         diagnostics.add(new ParseDiagnostic(cb.origin(), e.getClass().getSimpleName() + ": " + e.getMessage()));
                     }
@@ -53,6 +55,6 @@ public final class BytecodeFrontend {
                 JustLogger.error("读取输入失败 {}: {}", target, e.getMessage());
             }
         }
-        return new LoadResult(classes, List.copyOf(diagnostics), files);
+        return new LoadResult(classes, List.copyOf(diagnostics), files, maxMajor);
     }
 }

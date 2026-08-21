@@ -371,14 +371,53 @@ entry：readObject/readResolve/readObjectNoData/readExternal/hashCode/proxyInvok
 
 findings.csv 按 confidence_score 降序、链长、变体数排序输出。
 
-### 6.11 机制去重校准（KS11 mechanism-dedup，CALIBRATION）
+### 6.11 序列化框架桥接（KS12 serialize-bridge，ANALYSIS）
+
+领域建模（与 OIS 回调建模同族）：当 magic-entry 方法调用序列化框架的"对象→字符串"入口
+（jackson/gson/fastjson/XStream 等），序列化管线以**反射调用 getter/setter**（Method.invoke）
+来获取/写入字段——被序列化对象上的**任何 getter** 都成为攻击面（getter 内可执行任意逻辑，
+如 TemplatesImpl.getOutputProperties 加载字节码）。
+
+```text
+1. 框架入口识别（内置声明式清单，可经 YAML 扩展）：
+   jackson:   ObjectMapper/ObjectWriter.writeValueAsString/AsBytes/Value
+   fastjson1/2: JSON.toJSONString/toJSONBytes/writeJSONString, JSONObject/JSONArray.toString/toJSONString
+   gson:      Gson.toJson
+   XStream:   XStream.toXML
+   snakeyaml: Yaml.dump
+   ...
+2. 桥接条件：
+   a) magic-entry 方法（toString/readObject/hashCode/equals/proxyInvoke 等）体内调用框架入口
+   b) 框架管线终点存在 Method.invoke sink（BeanPropertyWriter.serializeAsField 等）
+   c) sink 的 receiver/arg0 来源可追溯到被序列化对象（框架入口的 arg0）
+3. 产链：entry → ... → 框架入口调用跳（reason=serialize-bridge）→ 管线关键跳 → Method.invoke sink
+   管线路径取调用图 BFS（只取调用边，不用污点传播——管线本身是框架内部，污点经过它不衰减）
+```
+
+典型收获：jackson `BaseJsonNode.toString → InternalNodeMapper → ObjectWriter.writeValueAsString
+→ BeanPropertyWriter.serializeAsField → Method.invoke`（n1cat 完整链的内层缺失段）。
+
+### 6.12 JDK 版本感知（前端 + CLI）
+
+当前工具用运行时 JVM 的 jrt 文件系统（JDK 17）作为 JDK 运行库——若目标 jar 编译目标为
+Java 8（major 52），而运行时为 JDK 17，可能出现：
+- 假阳：JDK 8 无而 17 有的方法被当作可达
+- 假阴：JDK 8 有而 17 已移除/签名变更的方法被判定不可解析
+
+```text
+前端改进：ClassFileReader 解析时提取 class 文件 major version（前 8 字节偏移 6-7），
+LoadResult 汇总 targetMajorVersion（取最大值）。
+CLI 日志：报告目标 JDK 版本与运行时 JDK 版本，差异时打 WARN。
+```
+
+### 6.13 机制去重校准（KS11 mechanism-dedup，CALIBRATION）
 
 同一"机制尾"（sink + 类别 + 去首跳的路径签名）的多入口链只保留 K=3 条代表
 （未解析少 → 链短 → 证据分高择优），其余以 mechanism-duplicate 拒绝。
 动机：KS6/KS7 的"任意入口 × 同一机制"笛卡尔积对人工审阅是纯噪音——
 分析者需要每行一个不同机制，而非同一机制的数百个入口变体。
 
-### 6.12 黑板调度协议
+### 6.14 黑板调度协议
 
 ```text
 事件：SCAN_START / SCAN_ANALYZED / SCAN_COMPLETE / CHAIN_FOUND（addChain 时发布，当前无内置订阅者，留作扩展点）
@@ -496,6 +535,7 @@ KS3 拒绝的链不出现在 findings.csv，其拒绝理由与计数在控制台
 | KS9 序列化可行性校准（serialize-feasibility） | JDD 可利用性验证的静态子集：字段类型无可序列化子类闭包则链不可能 | v0.2 ✓（CALIBRATION 阶段） |
 | KS10 触发上下文校准（trigger-context） | GI topLevel 语义：hashCode/equals/compareTo/compare/toString 须有反序列化可达触发者 | v0.2 ✓（CALIBRATION 阶段） |
 | KS11 机制去重校准（mechanism-dedup） | 人工审阅友好：同机制尾只留 K 条代表，消解入口×机制笛卡尔积噪音 | v0.2 ✓（CALIBRATION 阶段） |
+| KS12 序列化框架桥接（serialize-bridge） | n1cat/GI 领域：toString/readObject 调用 jackson/gson/fastjson 序列化时，getter 反射成为攻击面 | v0.2 ✓（ANALYSIS 阶段） |
 
 新增知识源三步：实现 `KnowledgeSource`（声明 phase 与 interests）→
 写入 `META-INF/services/io.just.sast.blackboard.KnowledgeSource` → 补契约测试与 benchmark 回归。

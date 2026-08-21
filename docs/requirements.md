@@ -26,6 +26,8 @@ Just 是轻量 Java SAST 工具：对闭源 JAR/WAR 做 Java 原生反序列化�
 | FR8f | KS10 触发上下文校准 | hashCode/equals/compareTo/compare/toString 类入口不被 OIS 机制自动调用：入口方法在入口/OIS 宿主下游集（含字段中介）内无任何调用者 → 链无法在反序列化中触发 → 拒绝（no-trigger）；机制调用的入口类别不校验 |
 | FR8g | KS11 机制去重校准 | 同机制尾（sink+类别+去首跳路径签名）的多入口链只保留 3 条代表（未解析少→链短→证据高择优），其余拒绝（mechanism-duplicate）；CALIBRATION 内顺序 KS3→KS8→KS9→KS10→KS11 |
 | FR8h | 产链降噪 | KS6 流来源剪除（宿主内联 new ObjectInputStream → 重写回调物理不可能）；KS7 万能容器类型（Object/Serializable/Cloneable/Comparable/Externalizable 字段）重根排除 |
+| FR8i | KS12 序列化框架桥接 | magic-entry 方法调用序列化框架（jackson/gson/fastjson/XStream/snakeyaml 等内置清单）→ 框架管线的 Method.invoke（getter 反射）成为 sink → 产桥接链（entry → 框架入口 → 管线关键跳 → invoke）；ANALYSIS 阶段自足 |
+| FR8j | JDK 版本感知 | 前端提取 class 文件 major version，LoadResult 汇总目标 JDK 版本；CLI 报告目标与运行时 JDK 差异（WARN） |
 | FR9 | 链达成 | 回溯触及 magic-entry 的 this/参数/proxy args，或前向对象污点命中 sink → 链成立 |
 | FR10 | 链提取 | entry→sink 人读顺序；去重（entry+sink+有序方法集合）；报告层按 (entry,sink,category) 折叠变体计数；置信度按路径证据分级（DIRECT_CALL/FIELD_FLOW 计证据，VIRTUAL_DISPATCH/LAMBDA 不计，unresolved 惩罚） |
 | FR11 | CSV 报告 | findings.csv（链汇总+变体计数+置信度分）+ edges.csv（每跳明细）+ sinks.csv（每 sink 的 KS2 裁决）；RFC 4180；UTF-8 BOM；CRLF；统计与日志走 stderr；KS3 拒绝链过滤出 findings |

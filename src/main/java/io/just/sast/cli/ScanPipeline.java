@@ -69,6 +69,14 @@ public final class ScanPipeline {
                 : frontend.load(targets, jdk.listAll(JrtClassSource.DESER_MODULES));
         JustLogger.info("解析完成：{} 个类（{} 个文件），诊断 {} 条",
                 load.classCount(), load.filesScanned(), load.diagnosticCount());
+        if (load.targetMajorVersion() > 0) {
+            String targetJdk = jdkVersionOf(load.targetMajorVersion());
+            String runtimeJdk = System.getProperty("java.version", "?");
+            JustLogger.info("目标 JDK：{}（major={}），运行时 JDK：{}", targetJdk, load.targetMajorVersion(), runtimeJdk);
+            if (load.targetMajorVersion() < 61 && !runtimeJdk.startsWith("1.8")) {
+                JustLogger.warn("目标编译版本低于运行时 JDK——运行时库中可能含目标 JDK 不存在的方法（假阳风险）");
+            }
+        }
 
         ClassHierarchy hierarchy = new ClassHierarchy(load.classes(), jdk);
         BuiltCpg cpg = new CpgBuilder().build(load);
@@ -96,6 +104,38 @@ public final class ScanPipeline {
             ConsoleSummary.print(scanStats, blackboard.sinkOutcomes());
         }
         return new ScanResult(ExitCode.OK.code(), blackboard.chains(), scanStats);
+    }
+
+
+    /** class 文件 major version → JDK 版本描述。 */
+    private static String jdkVersionOf(int major) {
+        return switch (major) {
+            case 45 -> "1.0/1.1";
+            case 46 -> "1.2";
+            case 47 -> "1.3";
+            case 48 -> "1.4";
+            case 49 -> "1.5";
+            case 50 -> "1.6";
+            case 51 -> "1.7";
+            case 52 -> "1.8";
+            case 53 -> "9";
+            case 54 -> "10";
+            case 55 -> "11";
+            case 56 -> "12";
+            case 57 -> "13";
+            case 58 -> "14";
+            case 59 -> "15";
+            case 60 -> "16";
+            case 61 -> "17";
+            case 62 -> "18";
+            case 63 -> "19";
+            case 64 -> "20";
+            case 65 -> "21";
+            case 66 -> "22";
+            case 67 -> "23";
+            case 68 -> "24";
+            default -> "unknown(" + major + ")";
+        };
     }
 
     private static RuleSet loadRules(Path rulesFile) throws IOException {
